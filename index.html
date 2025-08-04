@@ -328,6 +328,8 @@
       signupForm.reset();
       passwordStrengthBar.className = '';
       passwordStrengthBar.children[0].style.width = '0%';
+
+      window.location.href = 'home.html';
     } catch (error) {
       message.textContent = `❌ ${friendlyErrorMessage(error)}`;
       message.className = 'error';
@@ -360,6 +362,7 @@
 
       loginForm.reset();
 
+      window.location.href = 'home.html';
       // TODO: Redirect or load game data here
     } catch (error) {
       // Specifically catch "user not found" and show friendly message
