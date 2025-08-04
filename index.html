@@ -1,123 +1,330 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Clash Royale Clone - Sign Up / Login</title>
-  <meta charset="UTF-8" />
-  <style>
-    #login-form, #signup-form {
-      display: none;
-    }
-    #signup-form.active, #login-form.active {
-      display: block;
-    }
-    button.toggle-btn {
-      margin: 5px;
-    }
-  </style>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Clash Royale Clone - Sign Up / Login</title>
+<style>
+  :root {
+    --primary-color: #3b82f6; /* blue */
+    --background-color: #f9fafb; /* light gray */
+    --text-color: #111827; /* dark */
+    --input-bg: #fff;
+    --input-border: #ccc;
+    --input-focus-border: var(--primary-color);
+    --error-color: #ef4444; /* red */
+    --success-color: #22c55e; /* green */
+    --font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  }
+
+  body {
+    background-color: var(--background-color);
+    color: var(--text-color);
+    font-family: var(--font-family);
+    margin: 0; padding: 0;
+    display: flex;
+    height: 100vh;
+    justify-content: center;
+    align-items: center;
+  }
+
+  #container {
+    background: white;
+    padding: 2rem 3rem;
+    border-radius: 10px;
+    box-shadow: 0 4px 12px rgb(0 0 0 / 0.1);
+    width: 320px;
+  }
+
+  h1 {
+    text-align: center;
+    margin-bottom: 1.5rem;
+  }
+
+  .toggle-buttons {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 1.5rem;
+  }
+
+  .toggle-buttons button {
+    background: none;
+    border: none;
+    font-weight: 600;
+    color: var(--primary-color);
+    cursor: pointer;
+    font-size: 1rem;
+    padding: 0.5rem 1rem;
+    transition: background-color 0.3s ease;
+    border-radius: 5px 5px 0 0;
+    border-bottom: 2px solid transparent;
+  }
+
+  .toggle-buttons button.active {
+    border-bottom-color: var(--primary-color);
+    background-color: #e0e7ff;
+  }
+
+  form {
+    display: none;
+    flex-direction: column;
+  }
+
+  form.active {
+    display: flex;
+  }
+
+  label {
+    font-weight: 600;
+    margin-bottom: 0.3rem;
+  }
+
+  input[type="text"],
+  input[type="password"] {
+    padding: 0.5rem 0.75rem;
+    margin-bottom: 1rem;
+    border: 1.5px solid var(--input-border);
+    border-radius: 6px;
+    background-color: var(--input-bg);
+    font-size: 1rem;
+    transition: border-color 0.3s ease;
+  }
+
+  input[type="text"]:focus,
+  input[type="password"]:focus {
+    outline: none;
+    border-color: var(--input-focus-border);
+  }
+
+  button.submit-btn {
+    background-color: var(--primary-color);
+    color: white;
+    font-weight: 700;
+    border: none;
+    padding: 0.6rem 0;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 1rem;
+    transition: background-color 0.3s ease;
+  }
+
+  button.submit-btn:hover {
+    background-color: #2563eb; /* darker blue */
+  }
+
+  #message {
+    margin-top: 1rem;
+    text-align: center;
+    min-height: 1.3em;
+    font-weight: 600;
+  }
+
+  #message.error {
+    color: var(--error-color);
+  }
+
+  #message.success {
+    color: var(--success-color);
+  }
+
+  /* Password strength meter */
+  #password-strength {
+    height: 6px;
+    border-radius: 4px;
+    background: #e5e7eb;
+    margin-bottom: 1rem;
+    overflow: hidden;
+  }
+  #password-strength > div {
+    height: 100%;
+    width: 0%;
+    transition: width 0.3s ease;
+  }
+  #password-strength.weak > div {
+    background: var(--error-color);
+    width: 33%;
+  }
+  #password-strength.medium > div {
+    background: #f59e0b; /* amber */
+    width: 66%;
+  }
+  #password-strength.strong > div {
+    background: var(--success-color);
+    width: 100%;
+  }
+</style>
 </head>
 <body>
+
+<div id="container">
   <h1>Clash Royale Clone</h1>
 
-  <div>
-    <button id="show-signup" class="toggle-btn">Sign Up</button>
-    <button id="show-login" class="toggle-btn">Login</button>
+  <div class="toggle-buttons">
+    <button id="btn-signup" class="active" aria-pressed="true">Sign Up</button>
+    <button id="btn-login" aria-pressed="false">Login</button>
   </div>
 
-  <form id="signup-form" class="active">
-    <h2>Sign Up</h2>
-    <input type="text" id="signup-username" placeholder="Username" required /><br />
-    <input type="password" id="signup-password" placeholder="Password" required /><br />
-    <button type="submit">Sign Up</button>
+  <form id="signup-form" class="active" autocomplete="off" novalidate>
+    <label for="signup-username">Username</label>
+    <input type="text" id="signup-username" placeholder="Enter username" required autocomplete="username" />
+    
+    <label for="signup-password">Password</label>
+    <input type="password" id="signup-password" placeholder="Enter password" required autocomplete="new-password" />
+    
+    <div id="password-strength"><div></div></div>
+
+    <button type="submit" class="submit-btn">Sign Up</button>
   </form>
 
-  <form id="login-form">
-    <h2>Login</h2>
-    <input type="text" id="login-username" placeholder="Username" required /><br />
-    <input type="password" id="login-password" placeholder="Password" required /><br />
-    <button type="submit">Login</button>
+  <form id="login-form" autocomplete="off" novalidate>
+    <label for="login-username">Username</label>
+    <input type="text" id="login-username" placeholder="Enter username" required autocomplete="username" />
+    
+    <label for="login-password">Password</label>
+    <input type="password" id="login-password" placeholder="Enter password" required autocomplete="current-password" />
+    
+    <button type="submit" class="submit-btn">Login</button>
   </form>
 
-  <p id="message"></p>
+  <p id="message" aria-live="polite"></p>
+</div>
 
-  <!-- Firebase SDKs via CDN -->
-  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<!-- Firebase SDKs via CDN -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 
-  <script>
-    const firebaseConfig = {
-      apiKey: "AIzaSyADqsChcYfhT_bAlQ1VWkrlga-oTJViz7U",
-      authDomain: "clashroyaleclone-ae764.firebaseapp.com",
-      projectId: "clashroyaleclone-ae764",
-      storageBucket: "clashroyaleclone-ae764.firebasestorage.app",
-      messagingSenderId: "938364278081",
-      appId: "1:938364278081:web:1c214bd66caef6d7567dc0",
-      measurementId: "G-PT2GPP0JF5"
-    };
+<script>
+  const firebaseConfig = {
+    apiKey: "AIzaSyADqsChcYfhT_bAlQ1VWkrlga-oTJViz7U",
+    authDomain: "clashroyaleclone-ae764.firebaseapp.com",
+    projectId: "clashroyaleclone-ae764",
+    storageBucket: "clashroyaleclone-ae764.firebasestorage.app",
+    messagingSenderId: "938364278081",
+    appId: "1:938364278081:web:1c214bd66caef6d7567dc0",
+    measurementId: "G-PT2GPP0JF5"
+  };
 
-    firebase.initializeApp(firebaseConfig);
-    const auth = firebase.auth();
-    const db = firebase.firestore();
+  firebase.initializeApp(firebaseConfig);
+  const auth = firebase.auth();
+  const db = firebase.firestore();
 
-    const signupForm = document.getElementById("signup-form");
-    const loginForm = document.getElementById("login-form");
-    const message = document.getElementById("message");
+  // Elements
+  const btnSignup = document.getElementById('btn-signup');
+  const btnLogin = document.getElementById('btn-login');
+  const signupForm = document.getElementById('signup-form');
+  const loginForm = document.getElementById('login-form');
+  const message = document.getElementById('message');
+  const passwordInput = document.getElementById('signup-password');
+  const passwordStrengthBar = document.getElementById('password-strength');
 
-    // Toggle forms
-    document.getElementById("show-signup").onclick = () => {
-      signupForm.classList.add("active");
-      loginForm.classList.remove("active");
-      message.textContent = "";
-    };
-    document.getElementById("show-login").onclick = () => {
-      loginForm.classList.add("active");
-      signupForm.classList.remove("active");
-      message.textContent = "";
-    };
+  // Toggle forms
+  btnSignup.addEventListener('click', () => {
+    btnSignup.classList.add('active');
+    btnLogin.classList.remove('active');
+    btnSignup.setAttribute('aria-pressed', 'true');
+    btnLogin.setAttribute('aria-pressed', 'false');
+    signupForm.classList.add('active');
+    loginForm.classList.remove('active');
+    message.textContent = '';
+  });
 
-    // Sign Up handler
-    signupForm.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const username = document.getElementById("signup-username").value.trim();
-      const password = document.getElementById("signup-password").value;
-      const fakeEmail = `${username}@cr.com`;
+  btnLogin.addEventListener('click', () => {
+    btnLogin.classList.add('active');
+    btnSignup.classList.remove('active');
+    btnLogin.setAttribute('aria-pressed', 'true');
+    btnSignup.setAttribute('aria-pressed', 'false');
+    loginForm.classList.add('active');
+    signupForm.classList.remove('active');
+    message.textContent = '';
+  });
 
-      try {
-        const userCredential = await auth.createUserWithEmailAndPassword(fakeEmail, password);
-        const user = userCredential.user;
+  // Password strength check function
+  function checkPasswordStrength(password) {
+    let strength = 0;
+    if (password.length >= 8) strength++;
+    if (/[A-Z]/.test(password)) strength++;
+    if (/[0-9]/.test(password)) strength++;
+    if (/[^A-Za-z0-9]/.test(password)) strength++;
 
-        await db.collection("players").doc(user.uid).set({
-          username: username,
-          trophies: 0,
-          wins: 0,
-          losses: 0,
-          deck: [],
-          unlockedCards: []
-        });
+    if (strength <= 1) return 'weak';
+    if (strength === 2 || strength === 3) return 'medium';
+    if (strength === 4) return 'strong';
+  }
 
-        message.textContent = `✅ Signed up as ${username}`;
-      } catch (error) {
-        message.textContent = `❌ ${error.message}`;
-      }
-    });
+  passwordInput.addEventListener('input', () => {
+    const val = passwordInput.value;
+    const strength = checkPasswordStrength(val);
+    passwordStrengthBar.className = '';
+    if (val.length === 0) {
+      passwordStrengthBar.classList.remove('weak', 'medium', 'strong');
+      passwordStrengthBar.children[0].style.width = '0%';
+    } else {
+      passwordStrengthBar.classList.add(strength);
+    }
+  });
 
-    // Login handler
-    loginForm.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const username = document.getElementById("login-username").value.trim();
-      const password = document.getElementById("login-password").value;
-      const fakeEmail = `${username}@cr.com`;
+  // Sign Up handler
+  signupForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const username = document.getElementById('signup-username').value.trim();
+    const password = document.getElementById('signup-password').value;
+    const fakeEmail = `${username}@cr.com`;
 
-      try {
-        const userCredential = await auth.signInWithEmailAndPassword(fakeEmail, password);
-        const user = userCredential.user;
+    if (password.length < 6) {
+      message.textContent = '❌ Password must be at least 6 characters';
+      message.className = 'error';
+      return;
+    }
 
-        message.textContent = `✅ Logged in as ${username}`;
-        // You can redirect or load game data here
-      } catch (error) {
-        message.textContent = `❌ ${error.message}`;
-      }
-    });
-  </script>
+    try {
+      const userCredential = await auth.createUserWithEmailAndPassword(fakeEmail, password);
+      const user = userCredential.user;
+
+      await db.collection('players').doc(user.uid).set({
+        username: username,
+        trophies: 0,
+        wins: 0,
+        losses: 0,
+        deck: [],
+        unlockedCards: []
+      });
+
+      message.textContent = `✅ Signed up as ${username}`;
+      message.className = 'success';
+
+      signupForm.reset();
+      passwordStrengthBar.className = '';
+      passwordStrengthBar.children[0].style.width = '0%';
+    } catch (error) {
+      message.textContent = `❌ ${error.message}`;
+      message.className = 'error';
+    }
+  });
+
+  // Login handler
+  loginForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const username = document.getElementById('login-username').value.trim();
+    const password = document.getElementById('login-password').value;
+    const fakeEmail = `${username}@cr.com`;
+
+    try {
+      const userCredential = await auth.signInWithEmailAndPassword(fakeEmail, password);
+      const user = userCredential.user;
+
+      message.textContent = `✅ Logged in as ${username}`;
+      message.className = 'success';
+
+      loginForm.reset();
+
+      // TODO: Redirect to game page or load game data here
+    } catch (error) {
+      message.textContent = `❌ ${error.message}`;
+      message.className = 'error';
+    }
+  });
+</script>
+
 </body>
 </html>
