@@ -270,25 +270,29 @@
   }
 
   function friendlyErrorMessage(error) {
-    if (!error || !error.code) return error.message || "Unknown error";
+  if (!error || !error.code) return error.message || "Unknown error";
 
-    switch(error.code) {
-      case 'auth/email-already-in-use':
-        return 'This username is already taken.';
-      case 'auth/invalid-email':
-        return 'Invalid username format.';
-      case 'auth/weak-password':
-        return 'Password is too weak.';
-      case 'auth/wrong-password':
-        return 'Incorrect password.';
-      case 'auth/user-not-found':
-        return 'No account found with this username.';
-      case 'auth/too-many-requests':
-        return 'Too many attempts, please wait and try again later.';
-      default:
-        return 'An error occurred. Please try again.';
-    }
+  switch(error.code) {
+    case 'auth/email-already-in-use':
+      return 'This username is already taken.';
+    case 'auth/invalid-email':
+      return 'Invalid username format.';
+    case 'auth/weak-password':
+      return 'Password is too weak or has been found in a breach. Please choose a stronger one.';
+    case 'auth/wrong-password':
+      return 'Incorrect password.';
+    case 'auth/user-not-found':
+      return 'No account found with this username.';
+    case 'auth/too-many-requests':
+      return 'Too many attempts, please wait and try again later.';
+    default:
+      if (error.message && error.message.toLowerCase().includes('breach')) {
+        return 'This password was found in a data breach. Please choose a different password.';
+      }
+      return 'An error occurred. Please try again.';
   }
+}
+
 
   signupForm.addEventListener('submit', async (e) => {
     e.preventDefault();
