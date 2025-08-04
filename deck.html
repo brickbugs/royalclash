@@ -9,6 +9,7 @@
       background-color: #e3e3e3;
       padding: 20px;
       text-align: center;
+      position: relative;
     }
     h1 {
       margin-bottom: 10px;
@@ -43,6 +44,29 @@
       font-size: 16px;
       cursor: pointer;
     }
+    /* Notification UI */
+    #notification {
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background-color: #f44336; /* red */
+      color: white;
+      padding: 12px 24px;
+      border-radius: 8px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.5s ease;
+      z-index: 1000;
+      font-weight: bold;
+      user-select: none;
+      max-width: 300px;
+    }
+    #notification.show {
+      opacity: 1;
+      pointer-events: auto;
+    }
   </style>
 </head>
 <body>
@@ -60,6 +84,9 @@
   </div>
 
   <button onclick="goHome()">⬅️ Back to Home</button>
+
+  <!-- Notification UI -->
+  <div id="notification"></div>
 
   <!-- Firebase SDKs -->
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
@@ -88,8 +115,10 @@
 
     const cardContainer = document.getElementById("cardContainer");
     const deckContainer = document.getElementById("deckContainer");
+    const notification = document.getElementById("notification");
 
     let currentUser = null;
+    let notificationTimeout = null;
 
     auth.onAuthStateChanged(async (user) => {
       if (!user) {
@@ -110,6 +139,16 @@
         }
       }
     });
+
+    function showNotification(message) {
+      notification.textContent = message;
+      notification.classList.add("show");
+
+      clearTimeout(notificationTimeout);
+      notificationTimeout = setTimeout(() => {
+        notification.classList.remove("show");
+      }, 3000);
+    }
 
     function renderCards() {
       cardContainer.innerHTML = "";
@@ -132,38 +171,30 @@
           e.preventDefault();
           const cardName = e.dataTransfer.getData("text/plain");
 
-          // === Check for duplicate card anywhere in deck (including current slot) ===
-          // We'll collect all cards currently in slots except the one we're dropping into,
-          // then check if cardName exists in those.
-
           const cardsInOtherSlots = [];
           for (let j = 0; j < deckContainer.children.length; j++) {
             const otherSlot = deckContainer.children[j];
-            if (otherSlot === slot) continue; // skip current slot
+            if (otherSlot === slot) continue;
             const existingCard = otherSlot.querySelector(".card");
             if (existingCard) cardsInOtherSlots.push(existingCard.textContent);
           }
 
           if (cardsInOtherSlots.includes(cardName)) {
-            alert("You already have this card in your deck!");
-            return; // Block duplicate
+            showNotification("You already have this card in your deck!");
+            return;
           }
 
-          // Remove existing card in current slot
           const existing = slot.querySelector(".card");
           if (existing) existing.remove();
 
-          // Add new card to slot
           const newCard = createCard(cardName);
           slot.appendChild(newCard);
 
-          // Animate card scale
           newCard.style.transform = "scale(1.2)";
           setTimeout(() => {
             newCard.style.transform = "scale(1)";
           }, 300);
 
-          // Save deck now that change is valid
           saveDeck();
         };
 
@@ -194,6 +225,7 @@
           deck: deck
         }).catch(err => {
           console.error("Error saving deck:", err);
+          showNotification("Error saving deck data.");
         });
       }
     }
