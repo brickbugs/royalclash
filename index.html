@@ -6,14 +6,14 @@
 <title>Clash Royale Clone - Sign Up / Login</title>
 <style>
   :root {
-    --primary-color: #3b82f6; /* blue */
-    --background-color: #f9fafb; /* light gray */
-    --text-color: #111827; /* dark */
+    --primary-color: #3b82f6;
+    --background-color: #f9fafb;
+    --text-color: #111827;
     --input-bg: #fff;
     --input-border: #ccc;
     --input-focus-border: var(--primary-color);
-    --error-color: #ef4444; /* red */
-    --success-color: #22c55e; /* green */
+    --error-color: #ef4444;
+    --success-color: #22c55e;
     --font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
   }
 
@@ -109,7 +109,7 @@
   }
 
   button.submit-btn:hover {
-    background-color: #2563eb; /* darker blue */
+    background-color: #2563eb;
   }
 
   #message {
@@ -127,7 +127,6 @@
     color: var(--success-color);
   }
 
-  /* Password strength meter */
   #password-strength {
     height: 6px;
     border-radius: 4px;
@@ -145,7 +144,7 @@
     width: 33%;
   }
   #password-strength.medium > div {
-    background: #f59e0b; /* amber */
+    background: #f59e0b;
     width: 66%;
   }
   #password-strength.strong > div {
@@ -166,10 +165,10 @@
 
   <form id="signup-form" class="active" autocomplete="off" novalidate>
     <label for="signup-username">Username</label>
-    <input type="text" id="signup-username" placeholder="Enter username" required autocomplete="username" />
+    <input type="text" id="signup-username" placeholder="Letters & numbers only, max 20" required autocomplete="username" maxlength="20" />
     
     <label for="signup-password">Password</label>
-    <input type="password" id="signup-password" placeholder="Enter password" required autocomplete="new-password" />
+    <input type="password" id="signup-password" placeholder="6-30 characters" required autocomplete="new-password" maxlength="30" />
     
     <div id="password-strength"><div></div></div>
 
@@ -178,10 +177,10 @@
 
   <form id="login-form" autocomplete="off" novalidate>
     <label for="login-username">Username</label>
-    <input type="text" id="login-username" placeholder="Enter username" required autocomplete="username" />
+    <input type="text" id="login-username" placeholder="Letters & numbers only, max 20" required autocomplete="username" maxlength="20" />
     
     <label for="login-password">Password</label>
-    <input type="password" id="login-password" placeholder="Enter password" required autocomplete="current-password" />
+    <input type="password" id="login-password" placeholder="6-30 characters" required autocomplete="current-password" maxlength="30" />
     
     <button type="submit" class="submit-btn">Login</button>
   </form>
@@ -264,18 +263,59 @@
     }
   });
 
+  // Validate username format
+  function isValidUsername(username) {
+    const re = /^[A-Za-z0-9]{1,20}$/;
+    return re.test(username);
+  }
+
+  // Validate password length (6 to 30)
+  function isValidPassword(password) {
+    return password.length >= 6 && password.length <= 30;
+  }
+
+  // Helper for friendly error messages
+  function friendlyErrorMessage(error) {
+    if (!error || !error.code) return error.message || "Unknown error";
+
+    switch(error.code) {
+      case 'auth/email-already-in-use':
+        return 'This username is already taken.';
+      case 'auth/invalid-email':
+        return 'Invalid username format.';
+      case 'auth/weak-password':
+        return 'Password is too weak.';
+      case 'auth/wrong-password':
+        return 'Incorrect password.';
+      case 'auth/user-not-found':
+        return 'No account found with this username.';
+      case 'auth/too-many-requests':
+        return 'Too many attempts, please wait and try again later.';
+      default:
+        return error.message || 'An error occurred. Please try again.';
+    }
+  }
+
   // Sign Up handler
   signupForm.addEventListener('submit', async (e) => {
     e.preventDefault();
+
     const username = document.getElementById('signup-username').value.trim();
     const password = document.getElementById('signup-password').value;
-    const fakeEmail = `${username}@cr.com`;
 
-    if (password.length < 6) {
-      message.textContent = '❌ Password must be at least 6 characters';
+    // Validate input before firebase call
+    if (!isValidUsername(username)) {
+      message.textContent = "Username can only contain letters and numbers, max 20 characters, no spaces.";
       message.className = 'error';
       return;
     }
+    if (!isValidPassword(password)) {
+      message.textContent = "Password must be between 6 and 30 characters.";
+      message.className = 'error';
+      return;
+    }
+
+    const fakeEmail = `${username}@cr.com`;
 
     try {
       const userCredential = await auth.createUserWithEmailAndPassword(fakeEmail, password);
@@ -297,7 +337,7 @@
       passwordStrengthBar.className = '';
       passwordStrengthBar.children[0].style.width = '0%';
     } catch (error) {
-      message.textContent = `❌ ${error.message}`;
+      message.textContent = `❌ ${friendlyErrorMessage(error)}`;
       message.className = 'error';
     }
   });
@@ -305,8 +345,22 @@
   // Login handler
   loginForm.addEventListener('submit', async (e) => {
     e.preventDefault();
+
     const username = document.getElementById('login-username').value.trim();
     const password = document.getElementById('login-password').value;
+
+    // Validate inputs
+    if (!isValidUsername(username)) {
+      message.textContent = "Username can only contain letters and numbers, max 20 characters, no spaces.";
+      message.className = 'error';
+      return;
+    }
+    if (!isValidPassword(password)) {
+      message.textContent = "Password must be between 6 and 30 characters.";
+      message.className = 'error';
+      return;
+    }
+
     const fakeEmail = `${username}@cr.com`;
 
     try {
@@ -320,7 +374,7 @@
 
       // TODO: Redirect to game page or load game data here
     } catch (error) {
-      message.textContent = `❌ ${error.message}`;
+      message.textContent = `❌ ${friendlyErrorMessage(error)}`;
       message.className = 'error';
     }
   });
