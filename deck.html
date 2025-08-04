@@ -4,7 +4,7 @@
   <title>Deck Builder</title>
   <meta charset="UTF-8" />
   <style>
-  body {
+    body {
       font-family: Arial, sans-serif;
       background-color: #e3e3e3;
       padding: 20px;
@@ -49,36 +49,6 @@
       border-style: solid;
       background-color: #fdfdfd;
     }
-    button {
-      margin-top: 30px;
-      padding: 10px 20px;
-      font-size: 16px;
-      cursor: pointer;
-    }
-    /* Notification UI */
-    #notification {
-      position: fixed;
-      top: 20px;
-      left: 50%;
-      transform: translateX(-50%);
-      background-color: #f44336; /* red */
-      color: white;
-      padding: 12px 24px;
-      border-radius: 8px;
-      box-shadow: 0 4px 10px rgba(0,0,0,0.3);
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity 0.5s ease;
-      z-index: 1000;
-      font-weight: bold;
-      user-select: none;
-      max-width: 320px;
-    }
-    #notification.show {
-      opacity: 1;
-      pointer-events: auto;
-    }
-    /* Card info styling */
     .card-name {
       font-size: 16px;
       margin-top: 6px;
@@ -111,16 +81,101 @@
       border-radius: 6px;
       box-shadow: 0 1px 4px rgba(0,0,0,0.25);
     }
+    button {
+      margin-top: 30px;
+      padding: 10px 20px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    #notification {
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background-color: #f44336;
+      color: white;
+      padding: 12px 24px;
+      border-radius: 8px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.5s ease;
+      z-index: 1000;
+      font-weight: bold;
+      user-select: none;
+      max-width: 320px;
+    }
+    #notification.show {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    /* Card Info Popup */
+    #card-info-popup {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: white;
+      border: 2px solid #333;
+      padding: 20px;
+      border-radius: 10px;
+      z-index: 2000;
+      box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+      width: 300px;
+      display: none;
+    }
+    #popup-content {
+      text-align: center;
+    }
+    #popup-content h3 {
+      margin-bottom: 10px;
+    }
+    #popup-content button {
+      margin-top: 15px;
+      padding: 8px 16px;
+      background-color: #1976d2;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .info-button {
+      position: absolute;
+      bottom: 4px;
+      right: 4px;
+      padding: 2px 6px;
+      font-size: 12px;
+      background-color: #1976d2;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      display: none;
+      cursor: pointer;
+    }
+    .card:hover .info-button {
+      display: block;
+    }
   </style>
 </head>
 <body>
   <h1>Deck Builder</h1>
   <p>Drag cards into the deck slots below (Max 6, no duplicates). You can also drag cards out of your deck back here.</p>
+
   <div class="card-container" id="cardContainer"></div>
   <h2>Your Deck</h2>
   <div class="deck-container" id="deckContainer"></div>
   <button onclick="goHome()">⬅️ Back to Home</button>
   <div id="notification"></div>
+
+  <!-- Info Popup -->
+  <div id="card-info-popup">
+    <div id="popup-content">
+      <h3 id="popup-title">Card Info</h3>
+      <p id="popup-description">Loading...</p>
+      <button onclick="closeCardInfo()">Close</button>
+    </div>
+  </div>
 
   <!-- Firebase SDKs -->
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
@@ -128,7 +183,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 
   <script>
-    const ASSETS_BASE_URL = "https://brickbugs.github.io/clashroyaleclone-assets"; 
+    const ASSETS_BASE_URL = "https://brickbugs.github.io/clashroyaleclone-assets";
     const firebaseConfig = {
       apiKey: "AIzaSyADqsChcYfhT_bAlQ1VWkrlga-oTJViz7U",
       authDomain: "clashroyaleclone-ae764.firebaseapp.com",
@@ -151,35 +206,36 @@
     const deckContainer = document.getElementById("deckContainer");
     const notification = document.getElementById("notification");
 
-   auth.onAuthStateChanged(async (user) => {
-  if (!user) {
-    window.location.href = "index.html";
-    return;
-  }
-  currentUser = user;
-
-  await loadCards();
-  renderDeckSlots(); // step 1: setup empty slots
-
-  const doc = await db.collection("players").doc(user.uid).get();
-  const data = doc.data() || {};
-  const savedDeck = data.deck || [];
-
-  for (let i = 0; i < savedDeck.length; i++) {
-    const cardName = savedDeck[i];
-    const slot = deckContainer.children[i];
-
-    if (cardName) {
-      const cardObj = cardList.find(c => c.name === cardName);
-      if (cardObj) {
-        const cardEl = createCard(cardObj);
-        slot.appendChild(cardEl);
+    auth.onAuthStateChanged(async (user) => {
+      if (!user) {
+        window.location.href = "index.html";
+        return;
       }
-    }
-  }
+      currentUser = user;
 
-  renderCards();
-});
+      await loadCards();
+      renderDeckSlots();
+
+      const doc = await db.collection("players").doc(user.uid).get();
+      const data = doc.data() || {};
+      const savedDeck = data.deck || [];
+
+      for (let i = 0; i < savedDeck.length; i++) {
+        const cardName = savedDeck[i];
+        const slot = deckContainer.children[i];
+
+        if (cardName) {
+          const cardObj = cardList.find(c => c.name === cardName);
+          if (cardObj) {
+            const cardEl = createCard(cardObj);
+            slot.appendChild(cardEl);
+          }
+        }
+      }
+
+      renderCards();
+    });
+
     async function loadCards() {
       try {
         const snapshot = await db.collection("cards").orderBy("name").get();
@@ -196,46 +252,44 @@
     function showNotification(message) {
       notification.textContent = message;
       notification.classList.add("show");
-
       clearTimeout(notificationTimeout);
       notificationTimeout = setTimeout(() => {
         notification.classList.remove("show");
       }, 3000);
     }
 
- function renderCards() {
-  cardContainer.innerHTML = "";
-  const deckedCards = getDeckCardNames();
+    function renderCards() {
+      cardContainer.innerHTML = "";
+      const deckedCards = getDeckCardNames();
 
-  cardList.forEach(card => {
-    if (!deckedCards.includes(card.name)) {
-      const cardEl = createCard(card);
-      cardContainer.appendChild(cardEl);
+      cardList.forEach(card => {
+        if (!deckedCards.includes(card.name)) {
+          const cardEl = createCard(card);
+          cardContainer.appendChild(cardEl);
+        }
+      });
+
+      cardContainer.ondragover = e => e.preventDefault();
+      cardContainer.ondrop = e => {
+        e.preventDefault();
+        const cardName = e.dataTransfer.getData("text/plain");
+        if (!cardName) return;
+
+        removeCardFromDeck(cardName);
+        renderCards();
+        saveDeck();
+      };
     }
-  });
 
-  cardContainer.ondragover = e => e.preventDefault();
-  cardContainer.ondrop = e => {
-    e.preventDefault();
-    const cardName = e.dataTransfer.getData("text/plain");
-    if (!cardName) return;
-
-    removeCardFromDeck(cardName);
-    renderCards();
-    saveDeck();
-  };
-}
-
-function getDeckCardNames() {
-  const names = [];
-  for (let i = 0; i < deckContainer.children.length; i++) {
-    const slot = deckContainer.children[i];
-    const card = slot.querySelector(".card");
-    if (card) names.push(card.dataset.name);
-  }
-  return names;
-}
-
+    function getDeckCardNames() {
+      const names = [];
+      for (let i = 0; i < deckContainer.children.length; i++) {
+        const slot = deckContainer.children[i];
+        const card = slot.querySelector(".card");
+        if (card) names.push(card.dataset.name);
+      }
+      return names;
+    }
 
     function renderDeckSlots() {
       deckContainer.innerHTML = "";
@@ -313,12 +367,7 @@ function getDeckCardNames() {
       const img = document.createElement("img");
       img.className = "card-icon";
       img.alt = card.name + " icon";
-
-      if (card.assetFolder) {
-        img.src = `${ASSETS_BASE_URL}/${card.assetFolder}/icon.png`;
-      } else {
-        img.src = "";
-      }
+      img.src = card.assetFolder ? `${ASSETS_BASE_URL}/${card.assetFolder}/icon.png` : "";
       div.appendChild(img);
 
       const nameEl = document.createElement("div");
@@ -333,7 +382,39 @@ function getDeckCardNames() {
         div.appendChild(elixirEl);
       }
 
+      // Info button
+      const infoBtn = document.createElement("button");
+      infoBtn.className = "info-button";
+      infoBtn.textContent = "Info";
+      infoBtn.onclick = (e) => {
+        e.stopPropagation();
+        showCardInfo(card.name);
+      };
+      div.appendChild(infoBtn);
+
       return div;
+    }
+
+    async function showCardInfo(cardName) {
+      try {
+        const doc = await db.collection("cards").where("name", "==", cardName).limit(1).get();
+        if (!doc.empty) {
+          const cardData = doc.docs[0].data();
+          const popup = document.getElementById("card-info-popup");
+          document.getElementById("popup-title").textContent = cardData.name || cardName;
+          document.getElementById("popup-description").textContent = cardData.description || "No description available.";
+          popup.style.display = "block";
+        } else {
+          showNotification("Card info not found.");
+        }
+      } catch (err) {
+        console.error("Error loading card info:", err);
+        showNotification("Failed to load card info.");
+      }
+    }
+
+    function closeCardInfo() {
+      document.getElementById("card-info-popup").style.display = "none";
     }
 
     function saveDeck() {
