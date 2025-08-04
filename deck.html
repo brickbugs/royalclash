@@ -30,6 +30,8 @@
       font-weight: bold;
       background-color: white;
       cursor: grab;
+      user-select: none;
+      transition: transform 0.3s ease;
     }
     .deck-slot {
       border-style: solid;
@@ -46,7 +48,7 @@
 <body>
   <h1>Deck Builder</h1>
 
-  <p>Drag cards into the deck slots below (Max 6)</p>
+  <p>Drag cards into the deck slots below (Max 6, no duplicates)</p>
 
   <div class="card-container" id="cardContainer">
     <!-- Cards will be added by JS -->
@@ -110,6 +112,7 @@
     });
 
     function renderCards() {
+      cardContainer.innerHTML = "";
       cardNames.forEach(name => {
         const card = createCard(name);
         cardContainer.appendChild(card);
@@ -117,19 +120,43 @@
     }
 
     function renderDeckSlots() {
+      deckContainer.innerHTML = "";
       for (let i = 0; i < 6; i++) {
         const slot = document.createElement("div");
         slot.className = "deck-slot";
         slot.dataset.index = i;
+
         slot.ondragover = (e) => e.preventDefault();
+
         slot.ondrop = (e) => {
           e.preventDefault();
           const cardName = e.dataTransfer.getData("text/plain");
+
+          // Check for duplicates
+          for (let i = 0; i < deckContainer.children.length; i++) {
+            const otherSlot = deckContainer.children[i];
+            const existingCard = otherSlot.querySelector(".card");
+            if (existingCard && existingCard.textContent === cardName) {
+              alert("You already have this card in your deck!");
+              return; // Prevent duplicates
+            }
+          }
+
           const existing = slot.querySelector(".card");
           if (existing) existing.remove();
-          slot.appendChild(createCard(cardName));
+
+          const newCard = createCard(cardName);
+          slot.appendChild(newCard);
+
+          // Animate card size
+          newCard.style.transform = "scale(1.2)";
+          setTimeout(() => {
+            newCard.style.transform = "scale(1)";
+          }, 300);
+
           saveDeck();
         };
+
         deckContainer.appendChild(slot);
       }
     }
