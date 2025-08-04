@@ -132,28 +132,31 @@
           e.preventDefault();
           const cardName = e.dataTransfer.getData("text/plain");
 
-          // Check for duplicates
-          for (let i = 0; i < deckContainer.children.length; i++) {
-            const otherSlot = deckContainer.children[i];
+          // Check for duplicates in other slots (excluding this slot)
+          for (let j = 0; j < deckContainer.children.length; j++) {
+            const otherSlot = deckContainer.children[j];
             const existingCard = otherSlot.querySelector(".card");
-            if (existingCard && existingCard.textContent === cardName) {
+            if (existingCard && existingCard.textContent === cardName && otherSlot !== slot) {
               alert("You already have this card in your deck!");
-              return; // Prevent duplicates
+              return; // Prevent adding and saving duplicate
             }
           }
 
+          // Remove existing card from this slot, if any
           const existing = slot.querySelector(".card");
           if (existing) existing.remove();
 
+          // Add new card to slot
           const newCard = createCard(cardName);
           slot.appendChild(newCard);
 
-          // Animate card size
+          // Tween animation (scale up then back)
           newCard.style.transform = "scale(1.2)";
           setTimeout(() => {
             newCard.style.transform = "scale(1)";
           }, 300);
 
+          // Save updated deck
           saveDeck();
         };
 
@@ -182,6 +185,8 @@
       if (currentUser) {
         db.collection("players").doc(currentUser.uid).update({
           deck: deck
+        }).catch(err => {
+          console.error("Error saving deck:", err);
         });
       }
     }
