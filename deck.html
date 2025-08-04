@@ -186,6 +186,11 @@
       <p><strong>Elixir Cost:</strong> <span id="popup-elixr">N/A</span></p>
       <p><strong>Upgrade Cost:</strong> <span id="popup-upgrade">N/A</span></p>
       <p><strong>Bio:</strong> <span id="popup-bio">No bio available.</span></p>
+      <p><strong>Count:</strong> <span id="popup-count">N/A</span></p>
+      <p><strong>Targets:</strong> <span id="popup-targets">N/A</span></p>
+      <p><strong>Speed:</strong> <span id="popup-speed">N/A</span></p>
+      <p><strong>Range:</strong> <span id="popup-range">N/A</span></p>
+      <p><strong>Hit Speed:</strong> <span id="popup-hitspeed">N/A</span></p>
       <button onclick="closeCardInfo()">Close</button>
     </div>
   </div>
@@ -426,6 +431,11 @@
           document.getElementById("popup-elixr").textContent = cardData.elixir ?? "N/A";
           document.getElementById("popup-upgrade").textContent = cardData.upgradecost ?? "N/A";
           document.getElementById("popup-bio").textContent = cardData.bio || "No bio available.";
+          document.getElementById("popup-count").textContent = cardData.count ?? "N/A";
+          document.getElementById("popup-targets").textContent = cardData.targets ?? "N/A";
+          document.getElementById("popup-speed").textContent = cardData.speed ?? "N/A";
+          document.getElementById("popup-range").textContent = cardData.range ?? "N/A";
+          document.getElementById("popup-hitspeed").textContent = cardData.hitspeed ?? "N/A";
 
           document.getElementById("card-info-popup").style.display = "block";
         } else {
