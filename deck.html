@@ -130,12 +130,22 @@
       renderDeckSlots();
 
       const doc = await db.collection("players").doc(user.uid).get();
-      const data = doc.data();
+      const data = doc.data() || {};
       const savedDeck = data.deck || [];
+
+      // Clear slots first
+      for (let i = 0; i < 6; i++) {
+        const slot = deckContainer.children[i];
+        slot.innerHTML = "";
+      }
+
       for (let i = 0; i < savedDeck.length; i++) {
         if (savedDeck[i]) {
-          const cardEl = createCard(savedDeck[i]);
-          deckContainer.children[i].appendChild(cardEl);
+          // Only add if not duplicate (extra safety)
+          if (!isCardInDeck(savedDeck[i])) {
+            const cardEl = createCard(savedDeck[i]);
+            deckContainer.children[i].appendChild(cardEl);
+          }
         }
       }
     });
@@ -154,6 +164,7 @@
       cardContainer.innerHTML = "";
       cardNames.forEach(name => {
         const card = createCard(name);
+        // Cards in cardContainer are draggable, but not removable
         cardContainer.appendChild(card);
       });
     }
@@ -171,25 +182,26 @@
           e.preventDefault();
           const cardName = e.dataTransfer.getData("text/plain");
 
-          const cardsInOtherSlots = [];
-          for (let j = 0; j < deckContainer.children.length; j++) {
-            const otherSlot = deckContainer.children[j];
-            if (otherSlot === slot) continue;
-            const existingCard = otherSlot.querySelector(".card");
-            if (existingCard) cardsInOtherSlots.push(existingCard.textContent);
-          }
+          if (!cardName) return; // No card data
 
-          if (cardsInOtherSlots.includes(cardName)) {
+          // Check duplicates in ALL deck slots
+          if (isCardInDeck(cardName)) {
             showNotification("You already have this card in your deck!");
             return;
           }
 
+          // Clear existing card in slot
           const existing = slot.querySelector(".card");
           if (existing) existing.remove();
 
+          // Add new card element
           const newCard = createCard(cardName);
+          // Disable dragging cards from deck (optional, prevent moving deck cards back)
+          newCard.draggable = false;
+
           slot.appendChild(newCard);
 
+          // Animate scale
           newCard.style.transform = "scale(1.2)";
           setTimeout(() => {
             newCard.style.transform = "scale(1)";
@@ -200,6 +212,18 @@
 
         deckContainer.appendChild(slot);
       }
+    }
+
+    // Helper to check if card already in deck anywhere
+    function isCardInDeck(cardName) {
+      for (let i = 0; i < deckContainer.children.length; i++) {
+        const slot = deckContainer.children[i];
+        const card = slot.querySelector(".card");
+        if (card && card.textContent === cardName) {
+          return true;
+        }
+      }
+      return false;
     }
 
     function createCard(name) {
