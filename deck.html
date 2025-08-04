@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Deck Builder</title>
+  <meta charset="UTF-8" />
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #e3e3e3;
+      padding: 20px;
+      text-align: center;
+    }
+    h1 {
+      margin-bottom: 10px;
+    }
+    .card-container, .deck-container {
+      display: flex;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 20px;
+    }
+    .card, .deck-slot {
+      width: 80px;
+      height: 100px;
+      border: 2px dashed #aaa;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      background-color: white;
+      cursor: grab;
+    }
+    .deck-slot {
+      border-style: solid;
+      background-color: #fdfdfd;
+    }
+    button {
+      margin-top: 30px;
+      padding: 10px 20px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <h1>Deck Builder</h1>
+
+  <p>Drag cards into the deck slots below (Max 6)</p>
+
+  <div class="card-container" id="cardContainer">
+    <!-- Cards will be added by JS -->
+  </div>
+
+  <h2>Your Deck</h2>
+  <div class="deck-container" id="deckContainer">
+    <!-- Deck slots will be added by JS -->
+  </div>
+
+  <button onclick="goHome()">⬅️ Back to Home</button>
+
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyADqsChcYfhT_bAlQ1VWkrlga-oTJViz7U",
+      authDomain: "clashroyaleclone-ae764.firebaseapp.com",
+      projectId: "clashroyaleclone-ae764",
+      storageBucket: "clashroyaleclone-ae764.appspot.com",
+      messagingSenderId: "938364278081",
+      appId: "1:938364278081:web:1c214bd66caef6d7567dc0",
+      measurementId: "G-PT2GPP0JF5"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+    const db = firebase.firestore();
+
+    const cardNames = [
+      "Knight", "Archer", "Giant", "Wizard", "Goblin",
+      "Bomber", "Valkyrie", "Mini P.E.K.K.A", "Hog Rider", "Baby Dragon"
+    ];
+
+    const cardContainer = document.getElementById("cardContainer");
+    const deckContainer = document.getElementById("deckContainer");
+
+    let currentUser = null;
+
+    auth.onAuthStateChanged(async (user) => {
+      if (!user) {
+        window.location.href = "index.html";
+        return;
+      }
+      currentUser = user;
+      renderCards();
+      renderDeckSlots();
+
+      const doc = await db.collection("players").doc(user.uid).get();
+      const data = doc.data();
+      const savedDeck = data.deck || [];
+      for (let i = 0; i < savedDeck.length; i++) {
+        if (savedDeck[i]) {
+          const cardEl = createCard(savedDeck[i]);
+          deckContainer.children[i].appendChild(cardEl);
+        }
+      }
+    });
+
+    function renderCards() {
+      cardNames.forEach(name => {
+        const card = createCard(name);
+        cardContainer.appendChild(card);
+      });
+    }
+
+    function renderDeckSlots() {
+      for (let i = 0; i < 6; i++) {
+        const slot = document.createElement("div");
+        slot.className = "deck-slot";
+        slot.dataset.index = i;
+        slot.ondragover = (e) => e.preventDefault();
+        slot.ondrop = (e) => {
+          e.preventDefault();
+          const cardName = e.dataTransfer.getData("text/plain");
+          const existing = slot.querySelector(".card");
+          if (existing) existing.remove();
+          slot.appendChild(createCard(cardName));
+          saveDeck();
+        };
+        deckContainer.appendChild(slot);
+      }
+    }
+
+    function createCard(name) {
+      const div = document.createElement("div");
+      div.className = "card";
+      div.textContent = name;
+      div.draggable = true;
+      div.ondragstart = (e) => {
+        e.dataTransfer.setData("text/plain", name);
+      };
+      return div;
+    }
+
+    function saveDeck() {
+      const deck = [];
+      for (let i = 0; i < 6; i++) {
+        const slot = deckContainer.children[i];
+        const card = slot.querySelector(".card");
+        deck.push(card ? card.textContent : null);
+      }
+      if (currentUser) {
+        db.collection("players").doc(currentUser.uid).update({
+          deck: deck
+        });
+      }
+    }
+
+    function goHome() {
+      window.location.href = "home.html";
+    }
+  </script>
+</body>
+</html>
