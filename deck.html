@@ -20,6 +20,11 @@
       flex-wrap: wrap;
       gap: 12px;
       margin-top: 20px;
+      min-height: 120px; /* so you can drop cards here */
+      border: 2px dashed #888;
+      padding: 10px;
+      background-color: white;
+      user-select: none;
     }
     .card, .deck-slot {
       width: 80px;
@@ -72,7 +77,7 @@
 <body>
   <h1>Deck Builder</h1>
 
-  <p>Drag cards into the deck slots below (Max 6, no duplicates)</p>
+  <p>Drag cards into the deck slots below (Max 6, no duplicates). You can also drag cards out of your deck back here.</p>
 
   <div class="card-container" id="cardContainer">
     <!-- Cards will be added by JS -->
@@ -163,10 +168,36 @@
     function renderCards() {
       cardContainer.innerHTML = "";
       cardNames.forEach(name => {
-        const card = createCard(name);
-        // Cards in cardContainer are draggable, but not removable
-        cardContainer.appendChild(card);
+        // Show only cards NOT already in deck
+        if (!isCardInDeck(name)) {
+          const card = createCard(name);
+          // Cards in cardContainer are draggable
+          cardContainer.appendChild(card);
+        }
       });
+
+      // Setup drop handler for cardContainer to allow removing cards from deck
+      cardContainer.ondragover = (e) => e.preventDefault();
+      cardContainer.ondrop = (e) => {
+        e.preventDefault();
+        const cardName = e.dataTransfer.getData("text/plain");
+        if (!cardName) return;
+
+        // Check if card is currently in deck
+        if (!isCardInDeck(cardName)) {
+          showNotification("This card is already in your available cards.");
+          return;
+        }
+
+        // Remove card from deck slots
+        removeCardFromDeck(cardName);
+
+        // Re-render card container (to show the returned card)
+        renderCards();
+
+        // Save updated deck
+        saveDeck();
+      };
     }
 
     function renderDeckSlots() {
@@ -181,24 +212,20 @@
         slot.ondrop = (e) => {
           e.preventDefault();
           const cardName = e.dataTransfer.getData("text/plain");
-
           if (!cardName) return; // No card data
 
-          // Check duplicates in ALL deck slots
+          // If card already in deck, prevent duplicates
           if (isCardInDeck(cardName)) {
             showNotification("You already have this card in your deck!");
             return;
           }
 
-          // Clear existing card in slot
+          // Remove existing card in slot
           const existing = slot.querySelector(".card");
           if (existing) existing.remove();
 
-          // Add new card element
+          // Add new card element, draggable so user can drag it out
           const newCard = createCard(cardName);
-          // Disable dragging cards from deck (optional, prevent moving deck cards back)
-          newCard.draggable = false;
-
           slot.appendChild(newCard);
 
           // Animate scale
@@ -207,6 +234,9 @@
             newCard.style.transform = "scale(1)";
           }, 300);
 
+          // Remove this card from card container (available cards)
+          renderCards();
+
           saveDeck();
         };
 
@@ -214,7 +244,7 @@
       }
     }
 
-    // Helper to check if card already in deck anywhere
+    // Helper to check if card is already in the deck
     function isCardInDeck(cardName) {
       for (let i = 0; i < deckContainer.children.length; i++) {
         const slot = deckContainer.children[i];
@@ -226,14 +256,29 @@
       return false;
     }
 
+    // Remove a specific card from deck slots
+    function removeCardFromDeck(cardName) {
+      for (let i = 0; i < deckContainer.children.length; i++) {
+        const slot = deckContainer.children[i];
+        const card = slot.querySelector(".card");
+        if (card && card.textContent === cardName) {
+          card.remove();
+          break;
+        }
+      }
+    }
+
     function createCard(name) {
       const div = document.createElement("div");
       div.className = "card";
       div.textContent = name;
-      div.draggable = true;
+      div.draggable = true; // cards always draggable (in deck or container)
+
+      // Set drag data on drag start
       div.ondragstart = (e) => {
         e.dataTransfer.setData("text/plain", name);
       };
+
       return div;
     }
 
