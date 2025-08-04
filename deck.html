@@ -151,39 +151,35 @@
     const deckContainer = document.getElementById("deckContainer");
     const notification = document.getElementById("notification");
 
-    auth.onAuthStateChanged(async (user) => {
-      if (!user) {
-        window.location.href = "index.html";
-        return;
+   auth.onAuthStateChanged(async (user) => {
+  if (!user) {
+    window.location.href = "index.html";
+    return;
+  }
+  currentUser = user;
+
+  await loadCards();
+  renderDeckSlots(); // step 1: setup empty slots
+
+  const doc = await db.collection("players").doc(user.uid).get();
+  const data = doc.data() || {};
+  const savedDeck = data.deck || [];
+
+  for (let i = 0; i < savedDeck.length; i++) {
+    const cardName = savedDeck[i];
+    const slot = deckContainer.children[i];
+
+    if (cardName) {
+      const cardObj = cardList.find(c => c.name === cardName);
+      if (cardObj) {
+        const cardEl = createCard(cardObj);
+        slot.appendChild(cardEl);
       }
-      currentUser = user;
+    }
+  }
 
-      await loadCards();
-
-      renderCards();
-      renderDeckSlots();
-
-      const doc = await db.collection("players").doc(user.uid).get();
-      const data = doc.data() || {};
-      const savedDeck = data.deck || [];
-
-      for (let i = 0; i < 6; i++) {
-        deckContainer.children[i].innerHTML = "";
-      }
-
-      for (let i = 0; i < savedDeck.length; i++) {
-        if (savedDeck[i]) {
-          if (!isCardInDeck(savedDeck[i])) {
-            const cardObj = cardList.find(c => c.name === savedDeck[i]);
-            if (cardObj) {
-              const cardEl = createCard(cardObj);
-              deckContainer.children[i].appendChild(cardEl);
-            }
-          }
-        }
-      }
-    });
-
+  renderCards();
+});
     async function loadCards() {
       try {
         const snapshot = await db.collection("cards").orderBy("name").get();
@@ -207,7 +203,7 @@
       }, 3000);
     }
 
-  function renderCards() {
+ function renderCards() {
   cardContainer.innerHTML = "";
   const deckedCards = getDeckCardNames();
 
@@ -229,6 +225,7 @@
     saveDeck();
   };
 }
+
 function getDeckCardNames() {
   const names = [];
   for (let i = 0; i < deckContainer.children.length; i++) {
