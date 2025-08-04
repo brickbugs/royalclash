@@ -9,40 +9,166 @@
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     background: #f3f4f6;
     color: #111827;
+    margin: 0; padding: 20px;
+  }
+
+  #container {
+    max-width: 400px;
+    margin: auto;
+    background: white;
+    padding: 20px;
+    border-radius: 10px;
+    box-shadow: 0 4px 12px rgb(0 0 0 / 0.1);
+  }
+
+  h1 {
+    text-align: center;
+  }
+
+  #tabs {
     display: flex;
     justify-content: center;
-    align-items: center;
-    height: 100vh;
-    margin: 0;
-    flex-direction: column;
+    margin-top: 20px;
+    margin-bottom: 20px;
   }
-  h1 {
-    margin-bottom: 1rem;
-  }
-  button {
-    padding: 0.6rem 1.2rem;
-    font-size: 1rem;
+
+  #tabs button {
+    background: none;
     border: none;
+    padding: 10px 20px;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 1rem;
+    border-bottom: 3px solid transparent;
+    transition: border-color 0.3s ease;
+  }
+
+  #tabs button.active {
+    border-bottom-color: #3b82f6;
+    color: #3b82f6;
+  }
+
+  .tab-content {
+    display: none;
+  }
+
+  .tab-content.active {
+    display: block;
+  }
+
+  #coins-display {
+    font-size: 1.5rem;
+    font-weight: bold;
+    text-align: center;
+  }
+
+  #deck-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+
+  #deck-list li {
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    margin-bottom: 8px;
     border-radius: 6px;
-    background-color: #3b82f6;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  #deck-list li button {
+    background: #ef4444;
+    border: none;
     color: white;
+    border-radius: 4px;
+    padding: 2px 6px;
     cursor: pointer;
   }
-  button:hover {
+
+  #add-card-container {
+    display: flex;
+    margin-top: 10px;
+  }
+
+  #new-card-input {
+    flex-grow: 1;
+    padding: 6px 10px;
+    border: 1.5px solid #ccc;
+    border-radius: 6px 0 0 6px;
+    font-size: 1rem;
+  }
+
+  #add-card-btn {
+    padding: 6px 12px;
+    border: none;
+    background-color: #3b82f6;
+    color: white;
+    font-weight: 600;
+    border-radius: 0 6px 6px 0;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+  }
+
+  #add-card-btn:hover {
     background-color: #2563eb;
+  }
+
+  #logout-btn {
+    margin-top: 25px;
+    width: 100%;
+    padding: 10px;
+    background-color: #ef4444;
+    color: white;
+    font-weight: 700;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 1rem;
+  }
+
+  #logout-btn:hover {
+    background-color: #dc2626;
+  }
+
+  #loading {
+    text-align: center;
+    margin-top: 20px;
   }
 </style>
 </head>
 <body>
-  <h1>Welcome to Clash Royale Clone!</h1>
-  <p>You are logged in.</p>
-  <button id="logoutBtn">Logout</button>
+  <div id="container">
+    <h1>Welcome to Clash Royale Clone!</h1>
+
+    <div id="tabs">
+      <button id="tab-coins" class="active">Coins</button>
+      <button id="tab-deck">Deck</button>
+    </div>
+
+    <div id="coins" class="tab-content active">
+      <div id="coins-display">Loading coins...</div>
+    </div>
+
+    <div id="deck" class="tab-content">
+      <ul id="deck-list"></ul>
+      <div id="add-card-container">
+        <input type="text" id="new-card-input" placeholder="Add card name" maxlength="30" />
+        <button id="add-card-btn">Add</button>
+      </div>
+    </div>
+
+    <button id="logout-btn">Logout</button>
+    <div id="loading"></div>
+  </div>
 
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 
   <script>
-    // Your Firebase config (same as before)
+    // Firebase config (same as before)
     const firebaseConfig = {
       apiKey: "AIzaSyADqsChcYfhT_bAlQ1VWkrlga-oTJViz7U",
       authDomain: "clashroyaleclone-ae764.firebaseapp.com",
@@ -55,16 +181,152 @@
 
     firebase.initializeApp(firebaseConfig);
     const auth = firebase.auth();
+    const db = firebase.firestore();
 
-    // Make sure user is logged in, else redirect to index.html
-    auth.onAuthStateChanged(user => {
-      if (!user) {
-        window.location.href = 'index.html'; // not logged in, redirect to login/signup
+    const user = {
+      uid: null,
+      data: null
+    };
+
+    const tabs = {
+      coinsBtn: document.getElementById('tab-coins'),
+      deckBtn: document.getElementById('tab-deck'),
+      coinsContent: document.getElementById('coins'),
+      deckContent: document.getElementById('deck')
+    };
+
+    const coinsDisplay = document.getElementById('coins-display');
+    const deckList = document.getElementById('deck-list');
+    const newCardInput = document.getElementById('new-card-input');
+    const addCardBtn = document.getElementById('add-card-btn');
+    const logoutBtn = document.getElementById('logout-btn');
+    const loadingMsg = document.getElementById('loading');
+
+    // Show/hide tabs
+    tabs.coinsBtn.addEventListener('click', () => {
+      tabs.coinsBtn.classList.add('active');
+      tabs.deckBtn.classList.remove('active');
+      tabs.coinsContent.classList.add('active');
+      tabs.deckContent.classList.remove('active');
+    });
+
+    tabs.deckBtn.addEventListener('click', () => {
+      tabs.deckBtn.classList.add('active');
+      tabs.coinsBtn.classList.remove('active');
+      tabs.deckContent.classList.add('active');
+      tabs.coinsContent.classList.remove('active');
+    });
+
+    // Listen auth state and load user data
+    auth.onAuthStateChanged(async (currentUser) => {
+      if (!currentUser) {
+        // Not logged in - redirect
+        window.location.href = 'index.html';
+        return;
+      }
+
+      user.uid = currentUser.uid;
+      loadingMsg.textContent = 'Loading your data...';
+
+      try {
+        const doc = await db.collection('players').doc(user.uid).get();
+        if (!doc.exists) {
+          // If no data, create initial data
+          await db.collection('players').doc(user.uid).set({
+            username: currentUser.email.split('@')[0],
+            trophies: 0,
+            wins: 0,
+            losses: 0,
+            deck: [],
+            unlockedCards: [],
+            coins: 0
+          });
+          user.data = {
+            username: currentUser.email.split('@')[0],
+            trophies: 0,
+            wins: 0,
+            losses: 0,
+            deck: [],
+            unlockedCards: [],
+            coins: 0
+          };
+        } else {
+          user.data = doc.data();
+        }
+        loadingMsg.textContent = '';
+        updateUI();
+      } catch (err) {
+        loadingMsg.textContent = 'Failed to load data. Please refresh.';
+        console.error(err);
       }
     });
 
-    // Logout button
-    document.getElementById('logoutBtn').addEventListener('click', async () => {
+    // Update UI with loaded data
+    function updateUI() {
+      coinsDisplay.textContent = `${user.data.coins ?? 0} 💰`;
+
+      // Populate deck list
+      deckList.innerHTML = '';
+      if (user.data.deck && user.data.deck.length > 0) {
+        user.data.deck.forEach((card, i) => {
+          const li = document.createElement('li');
+          li.textContent = card;
+          const delBtn = document.createElement('button');
+          delBtn.textContent = '×';
+          delBtn.title = 'Remove card';
+          delBtn.addEventListener('click', () => {
+            removeCard(i);
+          });
+          li.appendChild(delBtn);
+          deckList.appendChild(li);
+        });
+      } else {
+        const li = document.createElement('li');
+        li.textContent = '(Deck is empty)';
+        li.style.fontStyle = 'italic';
+        deckList.appendChild(li);
+      }
+    }
+
+    // Add card to deck
+    addCardBtn.addEventListener('click', async () => {
+      const cardName = newCardInput.value.trim();
+      if (cardName.length === 0) return;
+      if (cardName.length > 30) {
+        alert('Card name max 30 characters');
+        return;
+      }
+
+      // Add to user data and save
+      if (!user.data.deck) user.data.deck = [];
+      user.data.deck.push(cardName);
+      newCardInput.value = '';
+      updateUI();
+
+      await saveUserData();
+    });
+
+    // Remove card from deck by index
+    async function removeCard(index) {
+      user.data.deck.splice(index, 1);
+      updateUI();
+      await saveUserData();
+    }
+
+    // Save user data to Firestore
+    async function saveUserData() {
+      try {
+        loadingMsg.textContent = 'Saving data...';
+        await db.collection('players').doc(user.uid).set(user.data, { merge: true });
+        loadingMsg.textContent = '';
+      } catch (err) {
+        loadingMsg.textContent = 'Failed to save data.';
+        console.error(err);
+      }
+    }
+
+    // Logout handler
+    logoutBtn.addEventListener('click', async () => {
       await auth.signOut();
       window.location.href = 'index.html';
     });
