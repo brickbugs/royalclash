@@ -54,6 +54,7 @@
       margin-top: 6px;
       user-select: none;
       text-align: center;
+      pointer-events: none;
     }
     .card-elixir {
       background-color: #4caf50;
@@ -111,6 +112,24 @@
       pointer-events: auto;
     }
 
+    /* Info button - hidden by default */
+    .info-button {
+      display: none;
+      position: absolute;
+      bottom: 5px;
+      left: 50%;
+      transform: translateX(-50%);
+      background-color: #1976d2;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      padding: 4px 8px;
+      font-size: 12px;
+      cursor: pointer;
+      z-index: 10;
+    }
+
+    /* Popup styling */
     #card-info-popup {
       position: fixed;
       top: 50%;
@@ -126,14 +145,13 @@
       display: none;
       text-align: left;
     }
-    #popup-content {
-      text-align: left;
-    }
     #popup-content h3 {
       margin-bottom: 10px;
+      text-align: center;
     }
     #popup-content p {
-      margin: 4px 0;
+      margin: 6px 0;
+      font-size: 14px;
     }
     #popup-content button {
       margin-top: 15px;
@@ -143,18 +161,9 @@
       border: none;
       border-radius: 6px;
       cursor: pointer;
-    }
-
-    .info-button {
-      margin-top: auto;
-      margin-bottom: 4px;
-      padding: 4px 8px;
-      font-size: 12px;
-      background-color: #1976d2;
-      color: white;
-      border: none;
-      border-radius: 6px;
-      cursor: pointer;
+      display: block;
+      margin-left: auto;
+      margin-right: auto;
     }
   </style>
 </head>
@@ -172,11 +181,11 @@
   <div id="card-info-popup">
     <div id="popup-content">
       <h3 id="popup-title">Card Info</h3>
-      <p id="popup-description">Loading...</p>
-      <p id="popup-hp"></p>
-      <p id="popup-damage"></p>
-      <p id="popup-elixir"></p>
-      <p id="popup-upgrade"></p>
+      <p><strong>Hitpoints:</strong> <span id="popup-hp">N/A</span></p>
+      <p><strong>Damage:</strong> <span id="popup-damage">N/A</span></p>
+      <p><strong>Elixir Cost:</strong> <span id="popup-elixr">N/A</span></p>
+      <p><strong>Upgrade Cost:</strong> <span id="popup-upgrade">N/A</span></p>
+      <p><strong>Bio:</strong> <span id="popup-bio">No bio available.</span></p>
       <button onclick="closeCardInfo()">Close</button>
     </div>
   </div>
@@ -384,32 +393,46 @@
       const infoBtn = document.createElement("button");
       infoBtn.className = "info-button";
       infoBtn.textContent = "Info";
-      infoBtn.onclick = (e) => {
-        e.stopPropagation();
-        showCardInfo(card.name);
-      };
+
+      // Info button click: show card info popup
+      infoBtn.addEventListener("click", async (e) => {
+        e.stopPropagation(); // Prevent card click toggle
+        await showCardInfo(card.name);
+      });
+
       div.appendChild(infoBtn);
+
+      // Show info button on card click, hide others
+      div.addEventListener("click", (e) => {
+        e.stopPropagation();
+        // Hide all other info buttons
+        document.querySelectorAll(".info-button").forEach(btn => btn.style.display = "none");
+        // Show this card's info button
+        infoBtn.style.display = "block";
+      });
 
       return div;
     }
 
     async function showCardInfo(cardName) {
       try {
-        const doc = await db.collection("cards").where("name", "==", cardName).limit(1).get();
-        if (!doc.empty) {
-          const card = doc.docs[0].data();
-          document.getElementById("popup-title").textContent = card.name || cardName;
-          document.getElementById("popup-description").textContent = card.bio || "No bio available.";
-          document.getElementById("popup-hp").textContent = "HP: " + (card.hitpoints ?? "N/A");
-          document.getElementById("popup-damage").textContent = "Damage: " + (card.damage ?? "N/A");
-          document.getElementById("popup-elixir").textContent = "Elixir Cost: " + (card.elixir ?? "N/A");
-          document.getElementById("popup-upgrade").textContent = "Upgrade Cost: " + (card.upgradeCost ?? "N/A");
+        const querySnapshot = await db.collection("cards").where("name", "==", cardName).limit(1).get();
+        if (!querySnapshot.empty) {
+          const cardData = querySnapshot.docs[0].data();
+
+          document.getElementById("popup-title").textContent = cardData.name || cardName;
+          document.getElementById("popup-hp").textContent = cardData.hitpoints ?? "N/A";
+          document.getElementById("popup-damage").textContent = cardData.damage ?? "N/A";
+          document.getElementById("popup-elixr").textContent = cardData.elixir ?? "N/A";
+          document.getElementById("popup-upgrade").textContent = cardData.upgradecost ?? "N/A";
+          document.getElementById("popup-bio").textContent = cardData.bio || "No bio available.";
+
           document.getElementById("card-info-popup").style.display = "block";
         } else {
           showNotification("Card info not found.");
         }
-      } catch (err) {
-        console.error("Error loading card info:", err);
+      } catch (error) {
+        console.error("Error getting card info:", error);
         showNotification("Failed to load card info.");
       }
     }
@@ -417,6 +440,11 @@
     function closeCardInfo() {
       document.getElementById("card-info-popup").style.display = "none";
     }
+
+    // Hide info buttons if clicking outside cards
+    document.addEventListener("click", () => {
+      document.querySelectorAll(".info-button").forEach(btn => btn.style.display = "none");
+    });
 
     function saveDeck() {
       const deck = [];
