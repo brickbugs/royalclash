@@ -207,31 +207,38 @@
       }, 3000);
     }
 
-    function renderCards() {
-      cardContainer.innerHTML = "";
-      cardList.forEach(card => {
-        if (!isCardInDeck(card.name)) {
-          const cardEl = createCard(card);
-          cardContainer.appendChild(cardEl);
-        }
-      });
+  function renderCards() {
+  cardContainer.innerHTML = "";
+  const deckedCards = getDeckCardNames();
 
-      cardContainer.ondragover = e => e.preventDefault();
-      cardContainer.ondrop = e => {
-        e.preventDefault();
-        const cardName = e.dataTransfer.getData("text/plain");
-        if (!cardName) return;
-
-        if (!isCardInDeck(cardName)) {
-          showNotification("This card is already in your available cards.");
-          return;
-        }
-
-        removeCardFromDeck(cardName);
-        renderCards();
-        saveDeck();
-      };
+  cardList.forEach(card => {
+    if (!deckedCards.includes(card.name)) {
+      const cardEl = createCard(card);
+      cardContainer.appendChild(cardEl);
     }
+  });
+
+  cardContainer.ondragover = e => e.preventDefault();
+  cardContainer.ondrop = e => {
+    e.preventDefault();
+    const cardName = e.dataTransfer.getData("text/plain");
+    if (!cardName) return;
+
+    removeCardFromDeck(cardName);
+    renderCards();
+    saveDeck();
+  };
+}
+function getDeckCardNames() {
+  const names = [];
+  for (let i = 0; i < deckContainer.children.length; i++) {
+    const slot = deckContainer.children[i];
+    const card = slot.querySelector(".card");
+    if (card) names.push(card.dataset.name);
+  }
+  return names;
+}
+
 
     function renderDeckSlots() {
       deckContainer.innerHTML = "";
