@@ -81,19 +81,25 @@
   }
 
   .deck-slot {
-    width: 80px;
-    height: 40px;
-    border: 2px dashed #9ca3af;
-    border-radius: 6px;
-    background-color: #f9fafb;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-  }
-  .deck-slot.over {
-    border-color: #2563eb;
-    background-color: #bfdbfe;
-  }
+  width: 90px;
+  height: 50px;
+  border: 2px dashed #9ca3af;
+  border-radius: 6px;
+  background-color: #f9fafb;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-width: 90px;
+  min-height: 50px;
+  box-sizing: border-box;
+  cursor: pointer;
+  user-select: none;
+}
+.deck-slot.over {
+  border-color: #2563eb;
+  background-color: #bfdbfe;
+}
+
 
   #logout-btn {
     margin-top: 25px;
@@ -251,68 +257,61 @@
       });
     }
 
-    // Drag & drop handlers
-    function dragStart(e) {
-      e.dataTransfer.setData('text/plain', e.target.dataset.cardName);
-      e.dataTransfer.setData('origin', e.target.parentElement.id || 'deck'); // 'card-pool' or 'deck-slots'
+function dragStart(e) {
+  e.dataTransfer.setData('text/plain', e.target.dataset.cardName);
+  e.dataTransfer.setData('origin', e.target.parentElement.id || 'deck-slots');
+  // Optional: add custom drag image for nicer UX
+}
+
+function dragOver(e) {
+  e.preventDefault();
+  e.currentTarget.classList.add('over');
+}
+
+function dragLeave(e) {
+  e.currentTarget.classList.remove('over');
+}
+
+async function dropOnSlot(e) {
+  e.preventDefault();
+  e.currentTarget.classList.remove('over');
+
+  const cardName = e.dataTransfer.getData('text/plain');
+  const origin = e.dataTransfer.getData('origin');
+  const slotIndex = parseInt(e.currentTarget.dataset.index);
+  if (isNaN(slotIndex)) return;
+
+  // Debug log
+  console.log('Dropped card', cardName, 'from', origin, 'into slot', slotIndex);
+
+  if (userDeck[slotIndex] === cardName) return;
+
+  if (origin === 'card-pool') {
+    if (userDeck[slotIndex] === null) {
+      userDeck[slotIndex] = cardName;
+      await saveDeck();
+      updateUI();
+    } else {
+      alert('Slot already occupied! Remove card first.');
     }
+  } else if (origin === 'deck-slots') {
+    const draggedFromIndex = userDeck.findIndex(c => c === cardName);
+    if (draggedFromIndex === slotIndex) return;
+    const temp = userDeck[slotIndex];
+    userDeck[slotIndex] = cardName;
+    userDeck[draggedFromIndex] = temp;
+    await saveDeck();
+    updateUI();
+  }
+}
 
-    function dragOver(e) {
-      e.preventDefault();
-      e.currentTarget.classList.add('over');
-    }
+// Also verify deck slots have these event listeners:
+deckSlots.querySelectorAll('.deck-slot').forEach(slot => {
+  slot.addEventListener('dragover', dragOver);
+  slot.addEventListener('drop', dropOnSlot);
+  slot.addEventListener('dragleave', dragLeave);
+});
 
-    function dragLeave(e) {
-      e.currentTarget.classList.remove('over');
-    }
-
-    async function dropOnSlot(e) {
-      e.preventDefault();
-      e.currentTarget.classList.remove('over');
-
-      const cardName = e.dataTransfer.getData('text/plain');
-      const origin = e.dataTransfer.getData('origin');
-      const slotIndex = parseInt(e.currentTarget.dataset.index);
-      if (isNaN(slotIndex)) return;
-
-      if (userDeck[slotIndex] === cardName) return; // Already here
-
-      if (origin === 'card-pool') {
-        // From pool → deck
-        if (userDeck[slotIndex] === null) {
-          userDeck[slotIndex] = cardName;
-          await saveDeck();
-          updateUI();
-        } else {
-          alert('Slot already occupied! Remove card first.');
-        }
-      } else if (origin === 'deck-slots') {
-        // Swap cards between slots
-        const draggedFromIndex = userDeck.findIndex(c => c === cardName);
-        if (draggedFromIndex === slotIndex) return;
-        const temp = userDeck[slotIndex];
-        userDeck[slotIndex] = cardName;
-        userDeck[draggedFromIndex] = temp;
-        await saveDeck();
-        updateUI();
-      }
-    }
-
-    cardPool.addEventListener('dragover', e => e.preventDefault());
-    cardPool.addEventListener('drop', async e => {
-      e.preventDefault();
-      const cardName = e.dataTransfer.getData('text/plain');
-      const origin = e.dataTransfer.getData('origin');
-
-      if (origin === 'deck-slots') {
-        const index = userDeck.findIndex(c => c === cardName);
-        if (index !== -1) {
-          userDeck[index] = null;
-          await saveDeck();
-          updateUI();
-        }
-      }
-    });
 
     function updateCoins() {
       coinsDisplay.textContent = `Coins: ${userData.coins ?? 0} 💰`;
