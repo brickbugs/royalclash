@@ -132,17 +132,24 @@
           e.preventDefault();
           const cardName = e.dataTransfer.getData("text/plain");
 
-          // Check for duplicates in other slots (excluding this slot)
+          // === Check for duplicate card anywhere in deck (including current slot) ===
+          // We'll collect all cards currently in slots except the one we're dropping into,
+          // then check if cardName exists in those.
+
+          const cardsInOtherSlots = [];
           for (let j = 0; j < deckContainer.children.length; j++) {
             const otherSlot = deckContainer.children[j];
+            if (otherSlot === slot) continue; // skip current slot
             const existingCard = otherSlot.querySelector(".card");
-            if (existingCard && existingCard.textContent === cardName && otherSlot !== slot) {
-              alert("You already have this card in your deck!");
-              return; // Prevent adding and saving duplicate
-            }
+            if (existingCard) cardsInOtherSlots.push(existingCard.textContent);
           }
 
-          // Remove existing card from this slot, if any
+          if (cardsInOtherSlots.includes(cardName)) {
+            alert("You already have this card in your deck!");
+            return; // Block duplicate
+          }
+
+          // Remove existing card in current slot
           const existing = slot.querySelector(".card");
           if (existing) existing.remove();
 
@@ -150,13 +157,13 @@
           const newCard = createCard(cardName);
           slot.appendChild(newCard);
 
-          // Tween animation (scale up then back)
+          // Animate card scale
           newCard.style.transform = "scale(1.2)";
           setTimeout(() => {
             newCard.style.transform = "scale(1)";
           }, 300);
 
-          // Save updated deck
+          // Save deck now that change is valid
           saveDeck();
         };
 
