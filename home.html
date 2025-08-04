@@ -1,179 +1,52 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Clash Royale Clone - Home / Deck Builder</title>
-<style>
-  body {
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    background: #f3f4f6;
-    color: #111827;
-    margin: 0; padding: 20px;
-  }
-  #container {
-    max-width: 480px;
-    margin: auto;
-    background: white;
-    padding: 20px;
-    border-radius: 10px;
-    box-shadow: 0 4px 12px rgb(0 0 0 / 0.1);
-  }
-  h1, h3 {
-    text-align: center;
-  }
-
-  #tabs {
-    display: flex;
-    justify-content: center;
-    gap: 15px;
-    margin-bottom: 20px;
-  }
-
-  #tabs button {
-    background: none;
-    border: none;
-    border-bottom: 3px solid transparent;
-    padding: 8px 16px;
-    font-size: 1rem;
-    font-weight: 600;
-    cursor: pointer;
-    color: #6b7280;
-    transition: all 0.3s ease;
-  }
-
-  #tabs button.active {
-    border-color: #3b82f6;
-    color: #3b82f6;
-  }
-
-  .tab-content {
-    display: none;
-  }
-  .tab-content.active {
-    display: block;
-  }
-
-  #coins-display {
-    font-size: 1.5rem;
-    font-weight: bold;
-    text-align: center;
-    margin-bottom: 20px;
-  }
-
-  #card-pool, #deck-slots {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-    justify-content: center;
-  }
-
-  #card-pool .card, .deck-slot .card {
-    padding: 8px 12px;
-    border: 1.5px solid #3b82f6;
-    border-radius: 6px;
-    cursor: grab;
-    user-select: none;
-    background-color: #dbeafe;
-    min-width: 80px;
-    text-align: center;
-    font-weight: 600;
-  }
-
-  .deck-slot {
-  width: 90px;
-  height: 50px;
-  border: 2px dashed #9ca3af;
-  border-radius: 6px;
-  background-color: #f9fafb;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  min-width: 90px;
-  min-height: 50px;
-  box-sizing: border-box;
-  cursor: pointer;
-  user-select: none;
-}
-.deck-slot.over {
-  border-color: #2563eb;
-  background-color: #bfdbfe;
-}
-
-
-  #logout-btn {
-    margin-top: 25px;
-    width: 100%;
-    padding: 10px;
-    background-color: #ef4444;
-    color: white;
-    font-weight: 700;
-    border: none;
-    border-radius: 8px;
-    cursor: pointer;
-    font-size: 1rem;
-  }
-  #logout-btn:hover {
-    background-color: #dc2626;
-  }
-
-  #loading {
-    text-align: center;
-    margin-top: 20px;
-    color: #555;
-  }
-
-  /* Scroll container for card pool if needed */
-  #card-pool {
-    max-height: 180px;
-    overflow-y: auto;
-    padding-bottom: 10px;
-    border-bottom: 1px solid #ddd;
-    margin-bottom: 20px;
-  }
-</style>
+  <title>Home - Clash Royale Clone</title>
+  <meta charset="UTF-8" />
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f5f5f5;
+      text-align: center;
+      padding: 40px;
+    }
+    h1 {
+      margin-bottom: 20px;
+    }
+    #user-info {
+      margin-top: 20px;
+      font-size: 18px;
+    }
+    button {
+      padding: 10px 20px;
+      margin: 10px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+  </style>
 </head>
 <body>
-  <div id="container">
-    <h1>Welcome to Clash Royale Clone!</h1>
+  <h1>Welcome to Clash Royale Clone!</h1>
 
-    <div id="tabs">
-      <button id="tab-coins" class="active">Coins</button>
-      <button id="tab-deck">Deck Builder</button>
-    </div>
-
-    <div id="coins-tab" class="tab-content active">
-      <div id="coins-display">Loading coins...</div>
-    </div>
-
-    <div id="deck-tab" class="tab-content">
-      <h3>Available Cards (Drag to deck)</h3>
-      <div id="card-pool"></div>
-
-      <h3>Your Deck (6 Slots)</h3>
-      <div id="deck-slots"></div>
-
-      <p style="margin-top:10px; font-size: 0.9rem; color: #555; text-align:center;">
-        Drag cards into slots to build your deck.<br />
-        Remove cards by dragging them back to the pool or swapping slots.
-      </p>
-    </div>
-
-    <button id="logout-btn">Logout</button>
-    <div id="loading"></div>
+  <div id="user-info">
+    <p id="username"></p>
+    <p id="coins"></p>
   </div>
 
+  <button onclick="goToDeck()">🃏 Deck Builder</button>
+  <button onclick="logout()">🚪 Logout</button>
+
+  <!-- Firebase SDKs -->
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 
   <script>
-    // Firebase config (replace with your config)
     const firebaseConfig = {
       apiKey: "AIzaSyADqsChcYfhT_bAlQ1VWkrlga-oTJViz7U",
       authDomain: "clashroyaleclone-ae764.firebaseapp.com",
       projectId: "clashroyaleclone-ae764",
-      storageBucket: "clashroyaleclone-ae764.firebasestorage.app",
+      storageBucket: "clashroyaleclone-ae764.appspot.com",
       messagingSenderId: "938364278081",
       appId: "1:938364278081:web:1c214bd66caef6d7567dc0",
       measurementId: "G-PT2GPP0JF5"
@@ -183,205 +56,41 @@
     const auth = firebase.auth();
     const db = firebase.firestore();
 
-    const coinsDisplay = document.getElementById('coins-display');
-    const cardPool = document.getElementById('card-pool');
-    const deckSlots = document.getElementById('deck-slots');
-    const logoutBtn = document.getElementById('logout-btn');
-    const loadingMsg = document.getElementById('loading');
+    const usernameEl = document.getElementById("username");
+    const coinsEl = document.getElementById("coins");
 
-    const tabCoinsBtn = document.getElementById('tab-coins');
-    const tabDeckBtn = document.getElementById('tab-deck');
-    const coinsTab = document.getElementById('coins-tab');
-    const deckTab = document.getElementById('deck-tab');
-
-    const availableCards = [
-      'Archer', 'Knight', 'Giant', 'Wizard', 'Goblin',
-      'Valkyrie', 'Skeleton', 'Fireball', 'Tesla', 'Hog Rider'
-    ];
-
-    let user = null;
-    let userData = null;
-    let userDeck = [null, null, null, null, null, null];
-
-    // Tab switching
-    tabCoinsBtn.addEventListener('click', () => {
-      tabCoinsBtn.classList.add('active');
-      tabDeckBtn.classList.remove('active');
-      coinsTab.classList.add('active');
-      deckTab.classList.remove('active');
-    });
-    tabDeckBtn.addEventListener('click', () => {
-      tabDeckBtn.classList.add('active');
-      tabCoinsBtn.classList.remove('active');
-      deckTab.classList.add('active');
-      coinsTab.classList.remove('active');
-    });
-
-    function createCardElement(cardName) {
-      const card = document.createElement('div');
-      card.className = 'card';
-      card.textContent = cardName;
-      card.draggable = true;
-      card.dataset.cardName = cardName;
-      card.addEventListener('dragstart', dragStart);
-      return card;
-    }
-
-    function renderCardPool() {
-      cardPool.innerHTML = '';
-      const deckCards = userDeck.filter(c => c !== null);
-      availableCards.forEach(cardName => {
-        if (!deckCards.includes(cardName)) {
-          cardPool.appendChild(createCardElement(cardName));
-        }
-      });
-    }
-
-    function renderDeckSlots() {
-      deckSlots.innerHTML = '';
-      userDeck.forEach((cardName, i) => {
-        const slot = document.createElement('div');
-        slot.className = 'deck-slot';
-        slot.dataset.index = i;
-
-        if (cardName) {
-          const card = createCardElement(cardName);
-          slot.appendChild(card);
-        }
-
-        slot.addEventListener('dragover', dragOver);
-        slot.addEventListener('drop', dropOnSlot);
-        slot.addEventListener('dragleave', dragLeave);
-
-        deckSlots.appendChild(slot);
-      });
-    }
-
-function dragStart(e) {
-  e.dataTransfer.setData('text/plain', e.target.dataset.cardName);
-  e.dataTransfer.setData('origin', e.target.parentElement.id || 'deck-slots');
-  // Optional: add custom drag image for nicer UX
-}
-
-function dragOver(e) {
-  e.preventDefault();
-  e.currentTarget.classList.add('over');
-}
-
-function dragLeave(e) {
-  e.currentTarget.classList.remove('over');
-}
-
-async function dropOnSlot(e) {
-  e.preventDefault();
-  e.currentTarget.classList.remove('over');
-
-  const cardName = e.dataTransfer.getData('text/plain');
-  const origin = e.dataTransfer.getData('origin');
-  const slotIndex = parseInt(e.currentTarget.dataset.index);
-  if (isNaN(slotIndex)) return;
-
-  // Debug log
-  console.log('Dropped card', cardName, 'from', origin, 'into slot', slotIndex);
-
-  if (userDeck[slotIndex] === cardName) return;
-
-  if (origin === 'card-pool') {
-    if (userDeck[slotIndex] === null) {
-      userDeck[slotIndex] = cardName;
-      await saveDeck();
-      updateUI();
-    } else {
-      alert('Slot already occupied! Remove card first.');
-    }
-  } else if (origin === 'deck-slots') {
-    const draggedFromIndex = userDeck.findIndex(c => c === cardName);
-    if (draggedFromIndex === slotIndex) return;
-    const temp = userDeck[slotIndex];
-    userDeck[slotIndex] = cardName;
-    userDeck[draggedFromIndex] = temp;
-    await saveDeck();
-    updateUI();
-  }
-}
-
-// Also verify deck slots have these event listeners:
-deckSlots.querySelectorAll('.deck-slot').forEach(slot => {
-  slot.addEventListener('dragover', dragOver);
-  slot.addEventListener('drop', dropOnSlot);
-  slot.addEventListener('dragleave', dragLeave);
-});
-
-
-    function updateCoins() {
-      coinsDisplay.textContent = `Coins: ${userData.coins ?? 0} 💰`;
-    }
-
-    function updateUI() {
-      updateCoins();
-      renderCardPool();
-      renderDeckSlots();
-      loadingMsg.textContent = '';
-    }
-
-    async function saveDeck() {
-      loadingMsg.textContent = 'Saving deck...';
-      try {
-        await db.collection('players').doc(user.uid).set({
-          deck: userDeck
-        }, { merge: true });
-        loadingMsg.textContent = '';
-      } catch (e) {
-        loadingMsg.textContent = 'Error saving deck.';
-        console.error(e);
-      }
-    }
-
-    auth.onAuthStateChanged(async currentUser => {
-      if (!currentUser) {
-        window.location.href = 'index.html';
+    auth.onAuthStateChanged(async (user) => {
+      if (!user) {
+        window.location.href = "index.html";
         return;
       }
 
-      user = currentUser;
-      loadingMsg.textContent = 'Loading user data...';
-
       try {
-        const doc = await db.collection('players').doc(user.uid).get();
-        if (!doc.exists) {
-          await db.collection('players').doc(user.uid).set({
-            username: user.email.split('@')[0],
-            trophies: 0,
-            wins: 0,
-            losses: 0,
-            deck: [null, null, null, null, null, null],
-            unlockedCards: [],
-            coins: 0
-          });
-          userData = {
-            username: user.email.split('@')[0],
-            trophies: 0,
-            wins: 0,
-            losses: 0,
-            deck: [null, null, null, null, null, null],
-            unlockedCards: [],
-            coins: 0
-          };
-        } else {
-          userData = doc.data();
-          userDeck = userData.deck || [null, null, null, null, null, null];
+        const doc = await db.collection("players").doc(user.uid).get();
+        const data = doc.data();
+
+        usernameEl.textContent = `👤 Username: ${data.username}`;
+        coinsEl.textContent = `💰 Coins: ${data.coins ?? 0}`;
+
+        // Optional: Initialize coins if not set
+        if (data.coins === undefined) {
+          await db.collection("players").doc(user.uid).update({ coins: 100 });
+          coinsEl.textContent = `💰 Coins: 100`;
         }
-        updateUI();
-      } catch (e) {
-        loadingMsg.textContent = 'Failed to load user data.';
-        console.error(e);
+      } catch (error) {
+        console.error("Error fetching user data:", error);
       }
     });
 
-    logoutBtn.addEventListener('click', async () => {
-      await auth.signOut();
-      window.location.href = 'index.html';
-    });
+    function logout() {
+      auth.signOut().then(() => {
+        window.location.href = "index.html";
+      });
+    }
+
+    function goToDeck() {
+      window.location.href = "deck.html";
+    }
   </script>
 </body>
 </html>
