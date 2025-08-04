@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Clash Royale Clone - Home</title>
+<style>
+  body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: #f3f4f6;
+    color: #111827;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    margin: 0;
+    flex-direction: column;
+  }
+  h1 {
+    margin-bottom: 1rem;
+  }
+  button {
+    padding: 0.6rem 1.2rem;
+    font-size: 1rem;
+    border: none;
+    border-radius: 6px;
+    background-color: #3b82f6;
+    color: white;
+    cursor: pointer;
+  }
+  button:hover {
+    background-color: #2563eb;
+  }
+</style>
+</head>
+<body>
+  <h1>Welcome to Clash Royale Clone!</h1>
+  <p>You are logged in.</p>
+  <button id="logoutBtn">Logout</button>
+
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+
+  <script>
+    // Your Firebase config (same as before)
+    const firebaseConfig = {
+      apiKey: "AIzaSyADqsChcYfhT_bAlQ1VWkrlga-oTJViz7U",
+      authDomain: "clashroyaleclone-ae764.firebaseapp.com",
+      projectId: "clashroyaleclone-ae764",
+      storageBucket: "clashroyaleclone-ae764.firebasestorage.app",
+      messagingSenderId: "938364278081",
+      appId: "1:938364278081:web:1c214bd66caef6d7567dc0",
+      measurementId: "G-PT2GPP0JF5"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+
+    // Make sure user is logged in, else redirect to index.html
+    auth.onAuthStateChanged(user => {
+      if (!user) {
+        window.location.href = 'index.html'; // not logged in, redirect to login/signup
+      }
+    });
+
+    // Logout button
+    document.getElementById('logoutBtn').addEventListener('click', async () => {
+      await auth.signOut();
+      window.location.href = 'index.html';
+    });
+  </script>
+</body>
+</html>
