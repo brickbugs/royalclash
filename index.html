@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Clash Royale Clone - Sign Up</title>
+</head>
+<body>
+  <h1>Sign Up</h1>
+  <form id="signup-form">
+    <input type="text" id="username" placeholder="Username" required /><br />
+    <input type="password" id="password" placeholder="Password" required /><br />
+    <button type="submit">Sign Up</button>
+  </form>
+
+  <p id="message"></p>
+
+  <!-- Firebase SDK & App Logic -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js"
+    import { getAuth, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js"
+    import { getFirestore, doc, setDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js"
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyADqsChcYfhT_bAlQ1VWkrlga-oTJViz7U",
+      authDomain: "clashroyaleclone-ae764.firebaseapp.com",
+      projectId: "clashroyaleclone-ae764",
+      storageBucket: "clashroyaleclone-ae764.firebasestorage.app",
+      messagingSenderId: "938364278081",
+      appId: "1:938364278081:web:1c214bd66caef6d7567dc0",
+      measurementId: "G-PT2GPP0JF5"
+    }
+
+    const app = initializeApp(firebaseConfig)
+    const auth = getAuth(app)
+    const db = getFirestore(app)
+
+    const form = document.getElementById("signup-form")
+    const message = document.getElementById("message")
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault()
+      const username = document.getElementById("username").value.trim()
+      const password = document.getElementById("password").value
+
+      const fakeEmail = `${username}@cr.com`
+
+      try {
+        const userCredential = await createUserWithEmailAndPassword(auth, fakeEmail, password)
+        const user = userCredential.user
+
+        // Save username in Firestore
+        await setDoc(doc(db, "players", user.uid), {
+          username: username,
+          trophies: 0,
+          wins: 0,
+          losses: 0,
+          deck: [],
+          unlockedCards: []
+        })
+
+        message.textContent = `✅ Signed up as ${username}`
+      } catch (error) {
+        message.textContent = `❌ ${error.message}`
+      }
+    })
+  </script>
+</body>
+</html>
