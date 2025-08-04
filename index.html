@@ -1,15 +1,40 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Clash Royale Clone - Sign Up</title>
-  <meta charset="UTF-8">
+  <title>Clash Royale Clone - Sign Up / Login</title>
+  <meta charset="UTF-8" />
+  <style>
+    #login-form, #signup-form {
+      display: none;
+    }
+    #signup-form.active, #login-form.active {
+      display: block;
+    }
+    button.toggle-btn {
+      margin: 5px;
+    }
+  </style>
 </head>
 <body>
-  <h1>Sign Up</h1>
-  <form id="signup-form">
-    <input type="text" id="username" placeholder="Username" required /><br>
-    <input type="password" id="password" placeholder="Password" required /><br>
+  <h1>Clash Royale Clone</h1>
+
+  <div>
+    <button id="show-signup" class="toggle-btn">Sign Up</button>
+    <button id="show-login" class="toggle-btn">Login</button>
+  </div>
+
+  <form id="signup-form" class="active">
+    <h2>Sign Up</h2>
+    <input type="text" id="signup-username" placeholder="Username" required /><br />
+    <input type="password" id="signup-password" placeholder="Password" required /><br />
     <button type="submit">Sign Up</button>
+  </form>
+
+  <form id="login-form">
+    <h2>Login</h2>
+    <input type="text" id="login-username" placeholder="Username" required /><br />
+    <input type="password" id="login-password" placeholder="Password" required /><br />
+    <button type="submit">Login</button>
   </form>
 
   <p id="message"></p>
@@ -20,7 +45,6 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 
   <script>
-    // Your Firebase config
     const firebaseConfig = {
       apiKey: "AIzaSyADqsChcYfhT_bAlQ1VWkrlga-oTJViz7U",
       authDomain: "clashroyaleclone-ae764.firebaseapp.com",
@@ -31,25 +55,37 @@
       measurementId: "G-PT2GPP0JF5"
     };
 
-    // Initialize Firebase
     firebase.initializeApp(firebaseConfig);
     const auth = firebase.auth();
     const db = firebase.firestore();
 
-    const form = document.getElementById("signup-form");
+    const signupForm = document.getElementById("signup-form");
+    const loginForm = document.getElementById("login-form");
     const message = document.getElementById("message");
 
-    form.addEventListener("submit", async (e) => {
+    // Toggle forms
+    document.getElementById("show-signup").onclick = () => {
+      signupForm.classList.add("active");
+      loginForm.classList.remove("active");
+      message.textContent = "";
+    };
+    document.getElementById("show-login").onclick = () => {
+      loginForm.classList.add("active");
+      signupForm.classList.remove("active");
+      message.textContent = "";
+    };
+
+    // Sign Up handler
+    signupForm.addEventListener("submit", async (e) => {
       e.preventDefault();
-      const username = document.getElementById("username").value.trim();
-      const password = document.getElementById("password").value;
+      const username = document.getElementById("signup-username").value.trim();
+      const password = document.getElementById("signup-password").value;
       const fakeEmail = `${username}@cr.com`;
 
       try {
         const userCredential = await auth.createUserWithEmailAndPassword(fakeEmail, password);
         const user = userCredential.user;
 
-        // Save initial player data to Firestore
         await db.collection("players").doc(user.uid).set({
           username: username,
           trophies: 0,
@@ -60,6 +96,24 @@
         });
 
         message.textContent = `✅ Signed up as ${username}`;
+      } catch (error) {
+        message.textContent = `❌ ${error.message}`;
+      }
+    });
+
+    // Login handler
+    loginForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const username = document.getElementById("login-username").value.trim();
+      const password = document.getElementById("login-password").value;
+      const fakeEmail = `${username}@cr.com`;
+
+      try {
+        const userCredential = await auth.signInWithEmailAndPassword(fakeEmail, password);
+        const user = userCredential.user;
+
+        message.textContent = `✅ Logged in as ${username}`;
+        // You can redirect or load game data here
       } catch (error) {
         message.textContent = `❌ ${error.message}`;
       }
