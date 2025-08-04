@@ -20,17 +20,18 @@
       flex-wrap: wrap;
       gap: 12px;
       margin-top: 20px;
-      min-height: 120px; /* so you can drop cards here */
+      min-height: 120px;
       border: 2px dashed #888;
       padding: 10px;
       background-color: white;
       user-select: none;
     }
     .card, .deck-slot {
-      width: 80px;
-      height: 100px;
+      width: 100px;
+      height: 120px;
       border: 2px dashed #aaa;
       display: flex;
+      flex-direction: column;
       align-items: center;
       justify-content: center;
       font-weight: bold;
@@ -38,6 +39,11 @@
       cursor: grab;
       user-select: none;
       transition: transform 0.3s ease;
+      padding: 6px;
+      box-sizing: border-box;
+      position: relative;
+      border-radius: 8px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.15);
     }
     .deck-slot {
       border-style: solid;
@@ -66,11 +72,44 @@
       z-index: 1000;
       font-weight: bold;
       user-select: none;
-      max-width: 300px;
+      max-width: 320px;
     }
     #notification.show {
       opacity: 1;
       pointer-events: auto;
+    }
+    /* Card info styling */
+    .card-name {
+      font-size: 16px;
+      margin-top: 6px;
+      user-select: none;
+    }
+    .card-elixir {
+      background-color: #4caf50;
+      color: white;
+      border-radius: 50%;
+      width: 28px;
+      height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      font-size: 14px;
+      position: absolute;
+      top: 6px;
+      left: 6px;
+      user-select: none;
+      pointer-events: none;
+      box-shadow: 0 0 4px rgba(0,0,0,0.3);
+    }
+    .card-icon {
+      width: 64px;
+      height: 64px;
+      user-select: none;
+      pointer-events: none;
+      object-fit: contain;
+      border-radius: 6px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.25);
     }
   </style>
 </head>
@@ -79,18 +118,13 @@
 
   <p>Drag cards into the deck slots below (Max 6, no duplicates). You can also drag cards out of your deck back here.</p>
 
-  <div class="card-container" id="cardContainer">
-    <!-- Cards will be added by JS -->
-  </div>
+  <div class="card-container" id="cardContainer"></div>
 
   <h2>Your Deck</h2>
-  <div class="deck-container" id="deckContainer">
-    <!-- Deck slots will be added by JS -->
-  </div>
+  <div class="deck-container" id="deckContainer"></div>
 
   <button onclick="goHome()">⬅️ Back to Home</button>
 
-  <!-- Notification UI -->
   <div id="notification"></div>
 
   <!-- Firebase SDKs -->
@@ -99,6 +133,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 
   <script>
+    const ASSETS_BASE_URL = "https://brickbugs.github.io/clashroyaleclone-assets/assets";
+
     const firebaseConfig = {
       apiKey: "AIzaSyADqsChcYfhT_bAlQ1VWkrlga-oTJViz7U",
       authDomain: "clashroyaleclone-ae764.firebaseapp.com",
@@ -113,17 +149,13 @@
     const auth = firebase.auth();
     const db = firebase.firestore();
 
-    const cardNames = [
-      "Knight", "Archer", "Giant", "Wizard", "Goblin",
-      "Bomber", "Valkyrie", "Mini P.E.K.K.A", "Hog Rider", "Baby Dragon"
-    ];
+    let cardList = [];
+    let currentUser = null;
+    let notificationTimeout = null;
 
     const cardContainer = document.getElementById("cardContainer");
     const deckContainer = document.getElementById("deckContainer");
     const notification = document.getElementById("notification");
-
-    let currentUser = null;
-    let notificationTimeout = null;
 
     auth.onAuthStateChanged(async (user) => {
       if (!user) {
@@ -131,6 +163,9 @@
         return;
       }
       currentUser = user;
+
+      await loadCards();
+
       renderCards();
       renderDeckSlots();
 
@@ -138,22 +173,35 @@
       const data = doc.data() || {};
       const savedDeck = data.deck || [];
 
-      // Clear slots first
       for (let i = 0; i < 6; i++) {
-        const slot = deckContainer.children[i];
-        slot.innerHTML = "";
+        deckContainer.children[i].innerHTML = "";
       }
 
       for (let i = 0; i < savedDeck.length; i++) {
         if (savedDeck[i]) {
-          // Only add if not duplicate (extra safety)
           if (!isCardInDeck(savedDeck[i])) {
-            const cardEl = createCard(savedDeck[i]);
-            deckContainer.children[i].appendChild(cardEl);
+            const cardObj = cardList.find(c => c.name === savedDeck[i]);
+            if (cardObj) {
+              const cardEl = createCard(cardObj);
+              deckContainer.children[i].appendChild(cardEl);
+            }
           }
         }
       }
     });
+
+    async function loadCards() {
+      try {
+        const snapshot = await db.collection("cards").orderBy("name").get();
+        cardList = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+      } catch (err) {
+        console.error("Error loading cards:", err);
+        showNotification("Failed to load cards.");
+      }
+    }
 
     function showNotification(message) {
       notification.textContent = message;
@@ -167,35 +215,26 @@
 
     function renderCards() {
       cardContainer.innerHTML = "";
-      cardNames.forEach(name => {
-        // Show only cards NOT already in deck
-        if (!isCardInDeck(name)) {
-          const card = createCard(name);
-          // Cards in cardContainer are draggable
-          cardContainer.appendChild(card);
+      cardList.forEach(card => {
+        if (!isCardInDeck(card.name)) {
+          const cardEl = createCard(card);
+          cardContainer.appendChild(cardEl);
         }
       });
 
-      // Setup drop handler for cardContainer to allow removing cards from deck
-      cardContainer.ondragover = (e) => e.preventDefault();
-      cardContainer.ondrop = (e) => {
+      cardContainer.ondragover = e => e.preventDefault();
+      cardContainer.ondrop = e => {
         e.preventDefault();
         const cardName = e.dataTransfer.getData("text/plain");
         if (!cardName) return;
 
-        // Check if card is currently in deck
         if (!isCardInDeck(cardName)) {
           showNotification("This card is already in your available cards.");
           return;
         }
 
-        // Remove card from deck slots
         removeCardFromDeck(cardName);
-
-        // Re-render card container (to show the returned card)
         renderCards();
-
-        // Save updated deck
         saveDeck();
       };
     }
@@ -207,36 +246,36 @@
         slot.className = "deck-slot";
         slot.dataset.index = i;
 
-        slot.ondragover = (e) => e.preventDefault();
+        slot.ondragover = e => e.preventDefault();
 
-        slot.ondrop = (e) => {
+        slot.ondrop = e => {
           e.preventDefault();
           const cardName = e.dataTransfer.getData("text/plain");
-          if (!cardName) return; // No card data
+          if (!cardName) return;
 
-          // If card already in deck, prevent duplicates
           if (isCardInDeck(cardName)) {
             showNotification("You already have this card in your deck!");
             return;
           }
 
-          // Remove existing card in slot
           const existing = slot.querySelector(".card");
           if (existing) existing.remove();
 
-          // Add new card element, draggable so user can drag it out
-          const newCard = createCard(cardName);
+          const cardObj = cardList.find(c => c.name === cardName);
+          if (!cardObj) {
+            showNotification("Card not found.");
+            return;
+          }
+
+          const newCard = createCard(cardObj);
           slot.appendChild(newCard);
 
-          // Animate scale
           newCard.style.transform = "scale(1.2)";
           setTimeout(() => {
             newCard.style.transform = "scale(1)";
           }, 300);
 
-          // Remove this card from card container (available cards)
           renderCards();
-
           saveDeck();
         };
 
@@ -244,40 +283,58 @@
       }
     }
 
-    // Helper to check if card is already in the deck
     function isCardInDeck(cardName) {
       for (let i = 0; i < deckContainer.children.length; i++) {
         const slot = deckContainer.children[i];
         const card = slot.querySelector(".card");
-        if (card && card.textContent === cardName) {
-          return true;
-        }
+        if (card && card.dataset.name === cardName) return true;
       }
       return false;
     }
 
-    // Remove a specific card from deck slots
     function removeCardFromDeck(cardName) {
       for (let i = 0; i < deckContainer.children.length; i++) {
         const slot = deckContainer.children[i];
         const card = slot.querySelector(".card");
-        if (card && card.textContent === cardName) {
+        if (card && card.dataset.name === cardName) {
           card.remove();
           break;
         }
       }
     }
 
-    function createCard(name) {
+    function createCard(card) {
       const div = document.createElement("div");
       div.className = "card";
-      div.textContent = name;
-      div.draggable = true; // cards always draggable (in deck or container)
+      div.draggable = true;
+      div.dataset.name = card.name;
 
-      // Set drag data on drag start
-      div.ondragstart = (e) => {
-        e.dataTransfer.setData("text/plain", name);
+      div.ondragstart = e => {
+        e.dataTransfer.setData("text/plain", card.name);
       };
+
+      const img = document.createElement("img");
+      img.className = "card-icon";
+      img.alt = card.name + " icon";
+
+      if (card.assetFolder) {
+        img.src = `${ASSETS_BASE_URL}/${card.assetFolder}/icon.png`;
+      } else {
+        img.src = "";
+      }
+      div.appendChild(img);
+
+      const nameEl = document.createElement("div");
+      nameEl.className = "card-name";
+      nameEl.textContent = card.name;
+      div.appendChild(nameEl);
+
+      if (card.elixir !== undefined) {
+        const elixirEl = document.createElement("div");
+        elixirEl.className = "card-elixir";
+        elixirEl.textContent = card.elixir;
+        div.appendChild(elixirEl);
+      }
 
       return div;
     }
@@ -287,7 +344,7 @@
       for (let i = 0; i < 6; i++) {
         const slot = deckContainer.children[i];
         const card = slot.querySelector(".card");
-        deck.push(card ? card.textContent : null);
+        deck.push(card ? card.dataset.name : null);
       }
       if (currentUser) {
         db.collection("players").doc(currentUser.uid).update({
