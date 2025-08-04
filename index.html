@@ -208,7 +208,6 @@
   const auth = firebase.auth();
   const db = firebase.firestore();
 
-  // Elements
   const btnSignup = document.getElementById('btn-signup');
   const btnLogin = document.getElementById('btn-login');
   const signupForm = document.getElementById('signup-form');
@@ -217,7 +216,6 @@
   const passwordInput = document.getElementById('signup-password');
   const passwordStrengthBar = document.getElementById('password-strength');
 
-  // Toggle forms
   btnSignup.addEventListener('click', () => {
     btnSignup.classList.add('active');
     btnLogin.classList.remove('active');
@@ -238,7 +236,6 @@
     message.textContent = '';
   });
 
-  // Password strength check function
   function checkPasswordStrength(password) {
     let strength = 0;
     if (password.length >= 8) strength++;
@@ -263,18 +260,15 @@
     }
   });
 
-  // Validate username format
   function isValidUsername(username) {
     const re = /^[A-Za-z0-9]{1,20}$/;
     return re.test(username);
   }
 
-  // Validate password length (6 to 30)
   function isValidPassword(password) {
     return password.length >= 6 && password.length <= 30;
   }
 
-  // Helper for friendly error messages
   function friendlyErrorMessage(error) {
     if (!error || !error.code) return error.message || "Unknown error";
 
@@ -292,18 +286,16 @@
       case 'auth/too-many-requests':
         return 'Too many attempts, please wait and try again later.';
       default:
-        return error.message || 'An error occurred. Please try again.';
+        return 'An error occurred. Please try again.';
     }
   }
 
-  // Sign Up handler
   signupForm.addEventListener('submit', async (e) => {
     e.preventDefault();
 
     const username = document.getElementById('signup-username').value.trim();
     const password = document.getElementById('signup-password').value;
 
-    // Validate input before firebase call
     if (!isValidUsername(username)) {
       message.textContent = "Username can only contain letters and numbers, max 20 characters, no spaces.";
       message.className = 'error';
@@ -342,14 +334,12 @@
     }
   });
 
-  // Login handler
   loginForm.addEventListener('submit', async (e) => {
     e.preventDefault();
 
     const username = document.getElementById('login-username').value.trim();
     const password = document.getElementById('login-password').value;
 
-    // Validate inputs
     if (!isValidUsername(username)) {
       message.textContent = "Username can only contain letters and numbers, max 20 characters, no spaces.";
       message.className = 'error';
@@ -364,17 +354,20 @@
     const fakeEmail = `${username}@cr.com`;
 
     try {
-      const userCredential = await auth.signInWithEmailAndPassword(fakeEmail, password);
-      const user = userCredential.user;
-
+      await auth.signInWithEmailAndPassword(fakeEmail, password);
       message.textContent = `✅ Logged in as ${username}`;
       message.className = 'success';
 
       loginForm.reset();
 
-      // TODO: Redirect to game page or load game data here
+      // TODO: Redirect or load game data here
     } catch (error) {
-      message.textContent = `❌ ${friendlyErrorMessage(error)}`;
+      // Specifically catch "user not found" and show friendly message
+      if (error.code === 'auth/user-not-found') {
+        message.textContent = '❌ No account found with this username. Please sign up first.';
+      } else {
+        message.textContent = `❌ ${friendlyErrorMessage(error)}`;
+      }
       message.className = 'error';
     }
   });
