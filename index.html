@@ -2,23 +2,25 @@
 <html>
 <head>
   <title>Clash Royale Clone - Sign Up</title>
+  <meta charset="UTF-8">
 </head>
 <body>
   <h1>Sign Up</h1>
   <form id="signup-form">
-    <input type="text" id="username" placeholder="Username" required /><br />
-    <input type="password" id="password" placeholder="Password" required /><br />
+    <input type="text" id="username" placeholder="Username" required /><br>
+    <input type="password" id="password" placeholder="Password" required /><br>
     <button type="submit">Sign Up</button>
   </form>
 
   <p id="message"></p>
 
-  <!-- Firebase SDK & App Logic -->
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js"
-    import { getAuth, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js"
-    import { getFirestore, doc, setDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js"
+  <!-- Firebase SDKs via CDN -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 
+  <script>
+    // Your Firebase config
     const firebaseConfig = {
       apiKey: "AIzaSyADqsChcYfhT_bAlQ1VWkrlga-oTJViz7U",
       authDomain: "clashroyaleclone-ae764.firebaseapp.com",
@@ -27,41 +29,41 @@
       messagingSenderId: "938364278081",
       appId: "1:938364278081:web:1c214bd66caef6d7567dc0",
       measurementId: "G-PT2GPP0JF5"
-    }
+    };
 
-    const app = initializeApp(firebaseConfig)
-    const auth = getAuth(app)
-    const db = getFirestore(app)
+    // Initialize Firebase
+    firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+    const db = firebase.firestore();
 
-    const form = document.getElementById("signup-form")
-    const message = document.getElementById("message")
+    const form = document.getElementById("signup-form");
+    const message = document.getElementById("message");
 
     form.addEventListener("submit", async (e) => {
-      e.preventDefault()
-      const username = document.getElementById("username").value.trim()
-      const password = document.getElementById("password").value
-
-      const fakeEmail = `${username}@cr.com`
+      e.preventDefault();
+      const username = document.getElementById("username").value.trim();
+      const password = document.getElementById("password").value;
+      const fakeEmail = `${username}@cr.com`;
 
       try {
-        const userCredential = await createUserWithEmailAndPassword(auth, fakeEmail, password)
-        const user = userCredential.user
+        const userCredential = await auth.createUserWithEmailAndPassword(fakeEmail, password);
+        const user = userCredential.user;
 
-        // Save username in Firestore
-        await setDoc(doc(db, "players", user.uid), {
+        // Save initial player data to Firestore
+        await db.collection("players").doc(user.uid).set({
           username: username,
           trophies: 0,
           wins: 0,
           losses: 0,
           deck: [],
           unlockedCards: []
-        })
+        });
 
-        message.textContent = `✅ Signed up as ${username}`
+        message.textContent = `✅ Signed up as ${username}`;
       } catch (error) {
-        message.textContent = `❌ ${error.message}`
+        message.textContent = `❌ ${error.message}`;
       }
-    })
+    });
   </script>
 </body>
 </html>
