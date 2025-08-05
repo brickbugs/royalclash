@@ -198,8 +198,6 @@ async function loadCardData() {
   console.log("Card data loaded:", Object.keys(cardDataCache));
 }
 
-
-// Load both players’ decks and set sides
 async function loadBattle() {
   startText.textContent = "Loading battle data...";
 
@@ -209,7 +207,7 @@ async function loadBattle() {
 
     if (!lobbyData || !Array.isArray(lobbyData.players) || lobbyData.players.length < 2) {
       startText.textContent = "❌ Waiting for opponent...";
-      return;
+      return false;  // battle not ready yet
     }
 
     const [uid1, uid2] = lobbyData.players;
@@ -238,12 +236,10 @@ async function loadBattle() {
     } else {
       alert("You are not in this battle.");
       window.location.href = "home.html";
-      return;
+      return false;
     }
 
-    console.log("Player deck:", playerDeck);
-    console.log("Enemy deck:", enemyDeck);
-
+    // Await card data load here!
     await loadCardData();
 
     renderHand(playerDeck);
@@ -251,11 +247,14 @@ async function loadBattle() {
 
     startText.textContent = "✅ Battle Ready! Select a card and place it on your side.";
 
+    return true;  // battle is ready
   } catch (err) {
     console.error(err);
     startText.textContent = "❌ Error loading battle.";
+    return false;
   }
 }
+
 
 function renderHand(deck) {
   hand.innerHTML = '';
@@ -655,18 +654,26 @@ function gameLoop() {
   requestAnimationFrame(gameLoop);
 }
 
-
-
 auth.onAuthStateChanged(async (user) => {
   if (!user) {
     window.location.href = "index.html";
     return;
   }
   currentUser = user;
-  await loadBattle();           // Load player and enemy decks, set sides
-  placeEnemyCards(enemyDeck);   // Place enemy cards on the map after loading decks
-  startPlacementListener();     // Start the player's card placement listener
-  gameLoop();                   // Start the game update loop
+  
+  const ready = await loadBattle();
+  if (!ready) {
+    // If battle is not ready, maybe wait or show message
+    return;
+  }
+
+  // Wait a tick for DOM/map to settle (to ensure map.getBoundingClientRect() works)
+  requestAnimationFrame(() => {
+    placeEnemyCards(enemyDeck);   // Now place enemy cards
+  });
+
+  startPlacementListener();   // Start player's placement listener
+  gameLoop();                 // Start the game loop
 });
 
 </script>
