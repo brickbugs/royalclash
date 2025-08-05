@@ -491,10 +491,18 @@ function placeEnemyCards(deck) {
   });
 }
 
-// Similar to placeCardOnMap, but owner is enemySide
 function placeCardOnMapForEnemy(cardId, x, y) {
-  const cardData = cardDataCache[cardId.toLowerCase()];
-  if (!cardData) return;
+  if (!cardId || typeof cardId !== 'string') {
+    console.warn('Invalid cardId passed to placeCardOnMapForEnemy:', cardId);
+    return;
+  }
+
+  const cardIdNormalized = cardId.toLowerCase();
+  const cardData = cardDataCache[cardIdNormalized];
+  if (!cardData) {
+    console.warn(`Card data missing for cardId: ${cardId}`);
+    return;
+  }
 
   const cardEl = document.createElement('div');
   cardEl.classList.add('placed-card');
@@ -502,12 +510,13 @@ function placeCardOnMapForEnemy(cardId, x, y) {
   cardEl.style.left = `${x - 30}px`;
   cardEl.style.top = `${y - 40}px`;
 
-  // HP bar container and bar
+  // HP bar container and hp bar
   const hpBarContainer = document.createElement('div');
   hpBarContainer.className = 'hp-bar-container';
 
   const hpBar = document.createElement('div');
   hpBar.className = 'hp-bar';
+  hpBar.style.width = '100%';
 
   hpBarContainer.appendChild(hpBar);
   cardEl.appendChild(hpBarContainer);
@@ -516,7 +525,7 @@ function placeCardOnMapForEnemy(cardId, x, y) {
 
   placedCards.push({
     id: cardId,
-    owner: enemySide,    // enemy owner here!
+    owner: enemySide,
     x,
     y,
     hp: cardData.hitpoints,
