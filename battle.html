@@ -136,7 +136,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 
- <script>
+<script>
 // Firebase config and initialization
 const firebaseConfig = {
   apiKey: "AIzaSyADqsChcYfhT_bAlQ1VWkrlga-oTJViz7U",
@@ -176,7 +176,7 @@ if (!lobbyId) {
   throw new Error("No lobbyId found, stopping script.");
 }
 
-// Load card data from Firestore "cards" collection
+// Load card data from Firestore
 async function loadCardData() {
   const cardsSnapshot = await db.collection("cards").get();
   cardsSnapshot.forEach(doc => {
@@ -198,10 +198,9 @@ async function loadCardData() {
   console.log("Card data loaded:", Object.keys(cardDataCache));
 }
 
-// Load battle info and decks, set sides
+// Initialize battle
 async function loadBattle() {
   startText.textContent = "Loading battle data...";
-
   try {
     const lobbySnap = await db.collection("lobbies").doc(lobbyId).get();
     const lobbyData = lobbySnap.data();
@@ -212,7 +211,6 @@ async function loadBattle() {
     }
 
     const [uid1, uid2] = lobbyData.players;
-
     const [player1Snap, player2Snap] = await Promise.all([
       db.collection("players").doc(uid1).get(),
       db.collection("players").doc(uid2).get(),
@@ -241,11 +239,8 @@ async function loadBattle() {
     }
 
     await loadCardData();
-
     renderHand(playerDeck);
-
     startText.textContent = "✅ Battle Ready! Select a card and place it on your side.";
-
   } catch (err) {
     console.error(err);
     startText.textContent = "❌ Error loading battle.";
@@ -256,19 +251,19 @@ function renderHand(deck) {
   hand.innerHTML = '';
   deck.forEach((cardId, idx) => {
     if (!cardId) {
-      console.warn(Skipping invalid cardId at index ${idx}:, cardId);
+      console.warn(`Skipping invalid cardId at index ${idx}:`, cardId);
       return;
     }
-    const cardIdNormalized = cardId.toLowerCase();
-    const cardData = cardDataCache[cardIdNormalized];
+    const normalized = cardId.toLowerCase();
+    const cardData = cardDataCache[normalized];
     if (!cardData) {
-      console.warn(Card data missing for cardId: ${cardId});
+      console.warn(`Card data missing for cardId: ${cardId}`);
       return;
     }
     const cardEl = document.createElement('div');
     cardEl.classList.add('card');
     cardEl.textContent = cardData.name || cardId;
-    cardEl.title = ${cardData.name}\nHP: ${cardData.hitpoints}\nDamage: ${cardData.damage}\nTargets: ${cardData.targets.join(", ")};
+    cardEl.title = `${cardData.name}\nHP: ${cardData.hitpoints}\nDamage: ${cardData.damage}\nTargets: ${cardData.targets.join(", ")}`;
     cardEl.dataset.idx = idx;
     cardEl.addEventListener('click', () => {
       if (selectedCardIndex === idx) {
@@ -286,15 +281,13 @@ function renderHand(deck) {
 }
 
 function updateHandSelection() {
-  const cards = hand.querySelectorAll(".card");
-  cards.forEach((cardEl, i) => {
-    cardEl.classList.toggle("selected", i === selectedCardIndex);
+  hand.querySelectorAll(".card").forEach((el, i) => {
+    el.classList.toggle("selected", i === selectedCardIndex);
   });
 }
 
 function startPlacementListener() {
   const cardMap = new Map();
-
   db.collection("lobbies")
     .doc(lobbyId)
     .collection("placements")
@@ -305,40 +298,30 @@ function startPlacementListener() {
         const data = doc.data();
         const id = doc.id;
 
-        if (change.type === "added") {
-          if (!cardMap.has(id)) {
-            const card = renderPlacedCard(id, data);
-            cardMap.set(id, card);
-          }
+        if (change.type === "added" && !cardMap.has(id)) {
+          const card = renderPlacedCard(id, data);
+          cardMap.set(id, card);
         } else if (change.type === "modified") {
           const card = cardMap.get(id);
           if (card) {
             card.targetX = data.x;
             card.targetY = data.y;
             card.hp = data.hp;
-
-            // Update HP bar
-            const hpPercent = (card.hp / card.maxHp) * 100;
-            card.hpBarElement.style.width = ${hpPercent}%;
-            card.hpBarElement.style.backgroundColor = hpPercent < 30 ? "#f00" : "#0f0";
-
+            const hpPct = (card.hp / card.maxHp) * 100;
+            card.hpBarElement.style.width = `${hpPct}%`;
+            card.hpBarElement.style.backgroundColor = hpPct < 30 ? "#f00" : "#0f0";
             if (card.hp <= 0) {
               card.domElement.style.opacity = "0.5";
-
-              // Delete dead card from Firestore once
               db.collection("lobbies")
                 .doc(lobbyId)
                 .collection("placements")
                 .doc(id)
-                .delete()
-                .catch(err => console.error("Error deleting dead card:", err));
+                .delete().catch(console.error);
             }
           }
         } else if (change.type === "removed") {
           const card = cardMap.get(id);
-          if (card && card.domElement && card.domElement.parentElement) {
-            card.domElement.remove();
-          }
+          if (card?.domElement?.parentElement) card.domElement.remove();
           cardMap.delete(id);
           placedCards = placedCards.filter(p => p.id !== id);
         }
@@ -347,235 +330,119 @@ function startPlacementListener() {
 }
 
 function renderPlacedCard(id, data) {
-  if (!data.cardId || !cardDataCache[data.cardId.toLowerCase()]) {
-    console.warn("Invalid cardId or missing card data for placed card", data.cardId);
+  const cd = cardDataCache[data.cardId?.toLowerCase()];
+  if (!cd) {
+    console.warn("Invalid cardId in placement:", data.cardId);
     return null;
   }
-
-  const cardIdNormalized = data.cardId.toLowerCase();
-  const cardData = cardDataCache[cardIdNormalized];
-
   const cardEl = document.createElement("div");
   cardEl.className = "placed-card";
-  cardEl.textContent = cardData.name || data.cardId;
-  cardEl.style.position = "absolute";
-  cardEl.style.left = ${data.x - 30}px;
-  cardEl.style.top = ${data.y - 40}px;
+  cardEl.textContent = cd.name || data.cardId;
+  cardEl.style.left = `${data.x - 30}px`;
+  cardEl.style.top = `${data.y - 40}px`;
   cardEl.style.zIndex = data.owner === playerSide ? 10 : 5;
-  cardEl.style.background = data.owner === "player1" ? "#2196f3cc" : "#e91e63cc"; // Blue for player1, pink for player2
-  cardEl.style.border = "2px solid white";
+  cardEl.style.background = data.owner === "player1" ? "#2196f3cc" : "#e91e63cc";
 
-  const hpBarContainer = document.createElement("div");
-  hpBarContainer.className = "hp-bar-container";
-
+  const hpCont = document.createElement("div");
+  hpCont.className = "hp-bar-container";
   const hpBar = document.createElement("div");
   hpBar.className = "hp-bar";
-
-  const hpPercent = (data.hp / data.maxHp) * 100;
-  hpBar.style.width = ${hpPercent}%;
-  hpBar.style.backgroundColor = hpPercent < 30 ? "#f00" : "#0f0";
-
-  if (data.hp <= 0) {
-    cardEl.style.opacity = "0.5";
-  }
-
-  hpBarContainer.appendChild(hpBar);
-  cardEl.appendChild(hpBarContainer);
+  const hpPct = (data.hp / data.maxHp) * 100;
+  hpBar.style.width = `${hpPct}%`;
+  hpBar.style.backgroundColor = hpPct < 30 ? "#f00" : "#0f0";
+  hpCont.appendChild(hpBar);
+  cardEl.appendChild(hpCont);
   map.appendChild(cardEl);
 
   const cardObj = {
-    id,
-    owner: data.owner,
-    x: data.x,
-    y: data.y,
-    hp: data.hp,
-    maxHp: data.maxHp,
-    damage: data.damage,
-    targets: data.targets,
-    speed: parseSpeed(data.speed),
-    range: parseRange(data.range),
-    hitspeed: data.hitspeed,
-    attackCooldown: 0,
-    domElement: cardEl,
-    hpBarElement: hpBar,
-    targetX: data.x,
-    targetY: data.y,
+    id, owner: data.owner, x: data.x, y: data.y,
+    hp: data.hp, maxHp: data.maxHp, damage: data.damage,
+    targets: data.targets, speed: parseSpeed(data.speed),
+    range: parseRange(data.range), hitspeed: data.hitspeed,
+    attackCooldown: 0, domElement: cardEl, hpBarElement: hpBar,
+    targetX: data.x, targetY: data.y
   };
-
   placedCards.push(cardObj);
   return cardObj;
 }
 
-function parseSpeed(speedStr) {
-  switch ((speedStr || "").toLowerCase()) {
+function parseSpeed(s) {
+  switch((s||"").toLowerCase()) {
     case "slow": return 30;
-    case "medium": return 60;
     case "fast": return 120;
-    default:
-      let n = parseFloat(speedStr);
-      return isNaN(n) ? 60 : n;
+    default: return 60;
   }
 }
-
-function parseRange(rangeStr) {
-  switch ((rangeStr || "").toLowerCase()) {
+function parseRange(r) {
+  switch((r||"").toLowerCase()) {
     case "melee": return 40;
     case "short": return 80;
-    case "medium": return 150;
     case "long": return 250;
-    default:
-      let n = parseFloat(rangeStr);
-      return isNaN(n) ? 50 : n;
+    default: return 150;
   }
 }
 
-map.addEventListener("click", async (e) => {
-  if (selectedCardIndex === null || !selectedCardData) {
-    startText.textContent = "Select a card first!";
-    return;
-  }
-
-  const rect = map.getBoundingClientRect();
-  const clickX = e.clientX - rect.left;
-  const clickY = e.clientY - rect.top;
-
-  if ((playerSide === "player1" && clickY > rect.height / 2) ||
-      (playerSide === "player2" && clickY < rect.height / 2)) {
-    startText.textContent = "Place cards only on your side!";
-    return;
-  }
-
-  const cardId = playerDeck[selectedCardIndex];
-  const cardData = cardDataCache[cardId.toLowerCase()];
-
-  if (!cardData) {
-    startText.textContent = "Card data missing, cannot place.";
-    return;
-  }
-
-  try {
-    await db.collection("lobbies")
-      .doc(lobbyId)
-      .collection("placements")
-      .add({
-        cardId: cardId,
-        owner: playerSide,
-        x: clickX,
-        y: clickY,
-        hp: cardData.hitpoints,
-        maxHp: cardData.hitpoints,
-        damage: cardData.damage,
-        targets: cardData.targets,
-        speed: cardData.speed,
-        range: cardData.range,
-        hitspeed: cardData.hitspeed || 1.0,
-        createdAt: firebase.firestore.FieldValue.serverTimestamp()
-      });
-
-    startText.textContent = "Card placed!";
-
-    playerDeck.splice(selectedCardIndex, 1);
-    renderHand(playerDeck);
-    selectedCardIndex = null;
-    selectedCardData = null;
-
-  } catch (err) {
-    console.error("Error placing card:", err);
-    startText.textContent = "Failed to place card.";
-  }
-});
-
-function distance(x1, y1, x2, y2) {
-  return Math.hypot(x2 - x1, y2 - y1);
+function distance(x1,y1,x2,y2) {
+  return Math.hypot(x2-x1, y2-y1);
 }
-   
-let lastUpdateTime = performance.now();
 
+let lastTime = performance.now();
 function gameLoop() {
   const now = performance.now();
-  const deltaTime = (now - lastUpdateTime) / 1000;
-  lastUpdateTime = now;
-
-  const lerpFactor = 0.15;
+  const dt = (now - lastTime) / 1000;
+  lastTime = now;
+  const lerp = 0.15;
 
   placedCards.forEach(card => {
     if (!card || typeof card.hp !== 'number' || card.hp <= 0) return;
-
-    // Smooth interpolation toward Firestore position
-    card.x += (card.targetX - card.x) * lerpFactor;
-    card.y += (card.targetY - card.y) * lerpFactor;
-
+    card.x += (card.targetX - card.x) * lerp;
+    card.y += (card.targetY - card.y) * lerp;
     if (card.domElement) {
-      card.domElement.style.left = ${card.x - 30}px;
-      card.domElement.style.top = ${card.y - 40}px;
+      card.domElement.style.left = `${card.x - 30}px`;
+      card.domElement.style.top = `${card.y - 40}px`;
     }
+    if (card.owner !== playerSide) return;
+    card.attackCooldown = Math.max(0, card.attackCooldown - dt);
 
-    if (card.owner !== playerSide) return; // Only control your own cards
-
-    card.attackCooldown = Math.max(0, card.attackCooldown - deltaTime);
-
-    // Find target in range
-    const target = placedCards.find(c =>
-      c &&
-      c.owner !== card.owner &&
-      c.hp > 0 &&
+    const tgt = placedCards.find(c =>
+      c.owner !== card.owner && c.hp > 0 &&
       distance(card.x, card.y, c.x, c.y) <= card.range
     );
 
-    if (!target) {
-      // Move toward nearest enemy
-      const nearestEnemy = placedCards.find(c => c && c.owner !== card.owner && c.hp > 0);
-      if (nearestEnemy) {
-        const dx = nearestEnemy.x - card.x;
-        const dy = nearestEnemy.y - card.y;
-        const dist = Math.hypot(dx, dy);
-
+    if (!tgt) {
+      const nearest = placedCards.find(c => c.owner !== card.owner && c.hp > 0);
+      if (nearest) {
+        const dx = nearest.x - card.x, dy = nearest.y - card.y,
+              dist = Math.hypot(dx, dy);
         if (dist > card.range) {
-          const angle = Math.atan2(dy, dx);
-          const moveDist = Math.min(card.speed * deltaTime, dist - card.range);
-          card.x += Math.cos(angle) * moveDist;
-          card.y += Math.sin(angle) * moveDist;
-
+          const ang = Math.atan2(dy, dx);
+          const mv = Math.min(card.speed * dt, dist - card.range);
+          card.x += Math.cos(ang) * mv;
+          card.y += Math.sin(ang) * mv;
           card.targetX = card.x;
           card.targetY = card.y;
-
-         if (card.id && typeof card.id === "string") {
-  db.collection("lobbies")
-    .doc(lobbyId)
-    .collection("placements")
-    .doc(card.id)
-    .update({
-      x: card.x,
-      y: card.y,
-    }).catch(err => console.error("Movement update failed:", err));
-} else {
-  console.warn("Skipping movement update: invalid card.id", card);
-}
-
+          if (card.id) {
+            db.collection("lobbies").doc(lobbyId)
+              .collection("placements").doc(card.id)
+              .update({ x: card.x, y: card.y }).catch(console.error);
+          }
         }
       }
       return;
     }
 
-    // Attack
     if (card.attackCooldown <= 0) {
-      const newHp = Math.max(0, target.hp - card.damage);
+      const newHp = Math.max(0, tgt.hp - card.damage);
       card.attackCooldown = card.hitspeed;
-
-      db.collection("lobbies")
-        .doc(lobbyId)
-        .collection("placements")
-        .doc(target.id)
-        .update({ hp: newHp })
-        .catch(err => console.error("Error updating HP:", err));
-
-      console.log(${card.id} attacks ${target.id} for ${card.damage} damage);
+      db.collection("lobbies").doc(lobbyId)
+        .collection("placements").doc(tgt.id)
+        .update({ hp: newHp }).catch(console.error);
+      console.log(`${card.id} attacks ${tgt.id} for ${card.damage} damage`);
     }
   });
 
   requestAnimationFrame(gameLoop);
 }
-
 
 auth.onAuthStateChanged(async (user) => {
   if (!user) {
@@ -587,7 +454,7 @@ auth.onAuthStateChanged(async (user) => {
   startPlacementListener();
   gameLoop();
 });
-
 </script>
+
 </body>
 </html>
