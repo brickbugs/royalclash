@@ -51,210 +51,209 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 
   <script>
-    const firebaseConfig = {
-      apiKey: "AIzaSyADqsChcYfhT_bAlQ1VWkrlga-oTJViz7U",
-      authDomain: "clashroyaleclone-ae764.firebaseapp.com",
-      projectId: "clashroyaleclone-ae764",
-      storageBucket: "clashroyaleclone-ae764.appspot.com",
-      messagingSenderId: "938364278081",
-      appId: "1:938364278081:web:1c214bd66caef6d7567dc0",
-      measurementId: "G-PT2GPP0JF5"
-    };
+  const firebaseConfig = {
+    apiKey: "AIzaSyADqsChcYfhT_bAlQ1VWkrlga-oTJViz7U",
+    authDomain: "clashroyaleclone-ae764.firebaseapp.com",
+    projectId: "clashroyaleclone-ae764",
+    storageBucket: "clashroyaleclone-ae764.appspot.com",
+    messagingSenderId: "938364278081",
+    appId: "1:938364278081:web:1c214bd66caef6d7567dc0",
+    measurementId: "G-PT2GPP0JF5"
+  };
 
-    firebase.initializeApp(firebaseConfig);
-    const auth = firebase.auth();
-    const db = firebase.firestore();
+  firebase.initializeApp(firebaseConfig);
+  const auth = firebase.auth();
+  const db = firebase.firestore();
 
-    const usernameEl = document.getElementById("username");
-    const coinsEl = document.getElementById("coins");
-    const battleButton = document.getElementById("battleButton");
-    const cancelSearchButton = document.getElementById("cancelSearchButton");
-    const matchStatus = document.getElementById("matchStatus");
+  const usernameEl = document.getElementById("username");
+  const coinsEl = document.getElementById("coins");
+  const battleButton = document.getElementById("battleButton");
+  const cancelSearchButton = document.getElementById("cancelSearchButton");
+  const matchStatus = document.getElementById("matchStatus");
 
-    let lobbyUnsubscribe = null;
-    let matchmakingTimeout = null;
-    let currentLobbyId = null;
-    let createdLobby = false;
+  let lobbyUnsubscribe = null;
+  let matchmakingTimeout = null;
+  let currentLobbyId = null;
+  let createdLobby = false;
 
-    // Detect online/offline status and update UI
-    function updateOnlineStatus() {
-      if (!navigator.onLine) {
-        matchStatus.textContent = "⚠️ You are offline. Check your internet connection.";
-        battleButton.disabled = true;
-      } else {
-        matchStatus.textContent = "";
-        battleButton.disabled = false;
-      }
+  function updateOnlineStatus() {
+    if (!navigator.onLine) {
+      matchStatus.textContent = "⚠️ You are offline. Check your internet connection.";
+      battleButton.disabled = true;
+    } else {
+      matchStatus.textContent = "";
+      battleButton.disabled = false;
     }
-    window.addEventListener('offline', updateOnlineStatus);
-    window.addEventListener('online', updateOnlineStatus);
-    updateOnlineStatus();
+  }
 
-    auth.onAuthStateChanged(async (user) => {
-      if (!user) {
-        window.location.href = "index.html";
+  window.addEventListener('offline', updateOnlineStatus);
+  window.addEventListener('online', updateOnlineStatus);
+  updateOnlineStatus();
+
+  auth.onAuthStateChanged(async (user) => {
+    if (!user) {
+      window.location.href = "index.html";
+      return;
+    }
+
+    usernameEl.textContent = "Loading username...";
+    coinsEl.textContent = "Loading coins...";
+
+    try {
+      const doc = await db.collection("players").doc(user.uid).get();
+      const data = doc.data();
+
+      if (!data) {
+        usernameEl.textContent = "⚠️ No user data found";
+        coinsEl.textContent = "";
         return;
       }
 
-      usernameEl.textContent = "Loading username...";
-      coinsEl.textContent = "Loading coins...";
+      usernameEl.textContent = `👤 Username: ${data.username}`;
+      coinsEl.textContent = `💰 Coins: ${data.coins ?? 0}`;
 
-      try {
-        const doc = await db.collection("players").doc(user.uid).get();
-        const data = doc.data();
-
-        if (!data) {
-          usernameEl.textContent = "⚠️ No user data found";
-          coinsEl.textContent = "";
-          return;
-        }
-
-        usernameEl.textContent = `👤 Username: ${data.username}`;
-        coinsEl.textContent = `💰 Coins: ${data.coins ?? 0}`;
-
-        // Optional: Initialize coins if not set
-        if (data.coins === undefined) {
-          await db.collection("players").doc(user.uid).update({ coins: 100 });
-          coinsEl.textContent = "💰 Coins: 100";
-        }
-      } catch (error) {
-        console.error("Error fetching user data:", error);
-        usernameEl.textContent = "⚠️ Unable to load username";
-        coinsEl.textContent = "";
+      if (data.coins === undefined) {
+        await db.collection("players").doc(user.uid).update({ coins: 100 });
+        coinsEl.textContent = "💰 Coins: 100";
       }
+    } catch (error) {
+      console.error("Error fetching user data:", error);
+      usernameEl.textContent = "⚠️ Unable to load username";
+      coinsEl.textContent = "";
+    }
+  });
+
+  function logout() {
+    auth.signOut().then(() => {
+      window.location.href = "index.html";
     });
-
-    function logout() {
-      auth.signOut().then(() => {
-        window.location.href = "index.html";
-      });
-    }
-
-    function goToDeck() {
-      window.location.href = "deck.html";
-    }
-
- cancelSearchButton.onclick = async () => {
-  if (lobbyUnsubscribe) {
-    lobbyUnsubscribe();
-    lobbyUnsubscribe = null;
-  }
-  if (matchmakingTimeout) {
-    clearTimeout(matchmakingTimeout);
-    matchmakingTimeout = null;
   }
 
-  if (createdLobby && currentLobbyId) {
-    try {
-      await db.collection("lobbies").doc(currentLobbyId).delete();
-      console.log("Lobby deleted.");
-    } catch (err) {
-      console.error("Failed to delete lobby:", err);
-    }
+  function goToDeck() {
+    window.location.href = "deck.html";
   }
 
-  matchStatus.textContent = "❌ Matchmaking cancelled.";
-  battleButton.disabled = false;
-  cancelSearchButton.style.display = "none";
+  cancelSearchButton.onclick = async () => {
+    if (lobbyUnsubscribe) {
+      lobbyUnsubscribe();
+      lobbyUnsubscribe = null;
+    }
+    if (matchmakingTimeout) {
+      clearTimeout(matchmakingTimeout);
+      matchmakingTimeout = null;
+    }
 
-  currentLobbyId = null;
-  createdLobby = false;
-};
-
-
-battleButton.addEventListener("click", async () => {
-  battleButton.disabled = true;
-  cancelSearchButton.style.display = "inline-block";
-  matchStatus.textContent = "🔍 Searching for an opponent...";
-
-  try {
-    const user = auth.currentUser;
-    if (!user) throw new Error("User not logged in");
-
-    const lobbiesRef = db.collection("lobbies");
-
-    // Step 1: Look for an open lobby
-    const openLobbySnapshot = await lobbiesRef
-      .where("ready", "==", false)
-      .limit(1)
-      .get();
-
-    let lobbyId;
-    let isJoining = false;
-
-    if (!openLobbySnapshot.empty) {
-      const lobbyDoc = openLobbySnapshot.docs[0];
-      const data = lobbyDoc.data();
-
-      if (data.players.length === 1 && data.players[0] !== user.uid) {
-        await lobbyDoc.ref.update({
-          players: [...data.players, user.uid],
-          ready: true
-        });
-        lobbyId = lobbyDoc.id;
-        isJoining = true;
-        createdLobby = false;
-        currentLobbyId = lobbyDoc.id;
-
+    if (createdLobby && currentLobbyId) {
+      try {
+        await db.collection("lobbies").doc(currentLobbyId).delete();
+        console.log("Deleted lobby on cancel:", currentLobbyId);
+      } catch (err) {
+        console.error("Error deleting lobby on cancel:", err);
       }
     }
 
-    if (!lobbyId) {
-      // Create a new lobby
-      const newLobby = await lobbiesRef.add({
-        players: [user.uid],
-        ready: false,
-        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    currentLobbyId = null;
+    createdLobby = false;
+    matchStatus.textContent = "❌ Matchmaking cancelled.";
+    battleButton.disabled = false;
+    cancelSearchButton.style.display = "none";
+  };
+
+  battleButton.addEventListener("click", async () => {
+    battleButton.disabled = true;
+    cancelSearchButton.style.display = "inline-block";
+    matchStatus.textContent = "🔍 Searching for an opponent...";
+
+    try {
+      const user = auth.currentUser;
+      if (!user) throw new Error("User not logged in");
+
+      const lobbiesRef = db.collection("lobbies");
+
+      const openLobbySnapshot = await lobbiesRef
+        .where("ready", "==", false)
+        .limit(1)
+        .get();
+
+      let lobbyId = null;
+
+      if (!openLobbySnapshot.empty) {
+        const lobbyDoc = openLobbySnapshot.docs[0];
+        const data = lobbyDoc.data();
+
+        if (data.players.length === 1 && data.players[0] !== user.uid) {
+          await lobbyDoc.ref.update({
+            players: [...data.players, user.uid],
+            ready: true
+          });
+          lobbyId = lobbyDoc.id;
+          createdLobby = false;
+          currentLobbyId = lobbyId;
+        }
+      }
+
+      if (!lobbyId) {
+        const newLobby = await lobbiesRef.add({
+          players: [user.uid],
+          ready: false,
+          createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        lobbyId = newLobby.id;
+        createdLobby = true;
+        currentLobbyId = lobbyId;
+      }
+
+      localStorage.setItem("lobbyId", lobbyId);
+
+      lobbyUnsubscribe = lobbiesRef.doc(lobbyId).onSnapshot((doc) => {
+        const lobbyData = doc.data();
+        if (lobbyData && lobbyData.ready && lobbyData.players.length === 2) {
+          if (lobbyUnsubscribe) {
+            lobbyUnsubscribe();
+            lobbyUnsubscribe = null;
+          }
+          if (matchmakingTimeout) {
+            clearTimeout(matchmakingTimeout);
+            matchmakingTimeout = null;
+          }
+          matchStatus.textContent = "✅ Match found! Starting battle...";
+          cancelSearchButton.style.display = "none";
+
+          setTimeout(() => {
+            window.location.href = "battle.html";
+          }, 1000);
+        }
       });
-      lobbyId = newLobby.id;
-      createdLobby = true;
-      currentLobbyId = lobbyId;
 
-    }
-
-    localStorage.setItem("lobbyId", lobbyId);
-
-    // Step 2: Listen for the lobby to be ready
-    lobbyUnsubscribe = lobbiesRef.doc(lobbyId).onSnapshot((doc) => {
-      const lobbyData = doc.data();
-      if (lobbyData && lobbyData.ready && lobbyData.players.length === 2) {
+      matchmakingTimeout = setTimeout(async () => {
         if (lobbyUnsubscribe) {
           lobbyUnsubscribe();
           lobbyUnsubscribe = null;
         }
-        if (matchmakingTimeout) {
-          clearTimeout(matchmakingTimeout);
-          matchmakingTimeout = null;
+        if (createdLobby && currentLobbyId) {
+          try {
+            await db.collection("lobbies").doc(currentLobbyId).delete();
+            console.log("Deleted lobby on timeout:", currentLobbyId);
+          } catch (err) {
+            console.error("Error deleting lobby on timeout:", err);
+          }
         }
-        matchStatus.textContent = "✅ Match found! Starting battle...";
+
+        matchStatus.textContent = "❌ No opponents found. Please try again.";
+        battleButton.disabled = false;
         cancelSearchButton.style.display = "none";
+        createdLobby = false;
+        currentLobbyId = null;
+        matchmakingTimeout = null;
+      }, 30000);
 
-        setTimeout(() => {
-          window.location.href = "battle.html";
-        }, 1000);
-      }
-    });
-
-    // Step 3: Timeout fallback
-    matchmakingTimeout = setTimeout(() => {
-      if (lobbyUnsubscribe) {
-        lobbyUnsubscribe();
-        lobbyUnsubscribe = null;
-      }
-      matchStatus.textContent = "❌ No opponents found. Please try again.";
+    } catch (err) {
+      console.error("Matchmaking error:", err);
+      matchStatus.textContent = "❌ Failed to find battle. Try again.";
       battleButton.disabled = false;
       cancelSearchButton.style.display = "none";
-      matchmakingTimeout = null;
-    }, 30000);
-
-  } catch (err) {
-    console.error("Matchmaking error:", err);
-    matchStatus.textContent = "❌ Failed to find battle. Try again.";
-    battleButton.disabled = false;
-    cancelSearchButton.style.display = "none";
-  }
-});
-
-  </script>
+    }
+  });
+</script>
 </body>
 </html>
