@@ -178,24 +178,26 @@ if (!lobbyId) {
 
 // Load card data from Firestore "cards" collection
 async function loadCardData() {
-cardsSnapshot.forEach(doc => {
-  const id = doc.id.toLowerCase();
-  const data = doc.data();
-  cardDataCache[id] = {
-    name: data.name || doc.id,
-    hitpoints: data.hitpoints || 100,
-    damage: data.damage || 10,
-    targets: (data.targets || "ground").split(",").map(t => t.trim()),
-    elixir: data.elixir || 1,
-    bio: data.bio || "",
-    count: data.count || 1,
-    speed: data.speed || "medium",
-    range: data.range || "melee",
-    hitspeed: data.hitspeed || 1.0
-  };
-});
+  const cardsSnapshot = await db.collection("cards").get();  // <--- Fetch snapshot here
+  cardsSnapshot.forEach(doc => {
+    const id = doc.id.toLowerCase();
+    const data = doc.data();
+    cardDataCache[id] = {
+      name: data.name || doc.id,
+      hitpoints: data.hitpoints || 100,
+      damage: data.damage || 10,
+      targets: (data.targets || "ground").split(",").map(t => t.trim()),
+      elixir: data.elixir || 1,
+      bio: data.bio || "",
+      count: data.count || 1,
+      speed: data.speed || "medium",
+      range: data.range || "melee",
+      hitspeed: data.hitspeed || 1.0
+    };
+  });
   console.log("Card data loaded:", Object.keys(cardDataCache));
 }
+
 
 // Load both players’ decks and set sides
 async function loadBattle() {
