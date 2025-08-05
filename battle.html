@@ -57,6 +57,7 @@
     user-select: none;
     transition: transform 0.2s ease;
     cursor: pointer;
+    position: relative;
   }
   .card.selected {
     outline: 3px solid #4caf50;
@@ -77,7 +78,22 @@
     pointer-events: none;
     user-select: none;
   }
-
+  .hp-bar-container {
+    position: absolute;
+    top: 5px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 70%;
+    height: 8px;
+    background: #333;
+    border-radius: 4px;
+  }
+  .hp-bar {
+    height: 100%;
+    background: #0f0;
+    border-radius: 4px;
+    width: 100%;
+  }
   #startText {
     position: absolute;
     top: 10px;
@@ -148,7 +164,51 @@
 
     let currentUser = null;
     let playerDeck = [];
-    let selectedCard = null;
+    let selectedCardIndex = null;
+    let selectedCardData = null;
+
+    // All placed cards on map
+    // Each: { id, owner, x, y, hp, maxHp, damage, targets:[], domElement, hpBarElement }
+    let placedCards = [];
+
+    // Towers - fixed positions and HP for both players
+    let towers = {
+      player1: [
+        {id: "p1-tower1", x: 100, y: 100, hp: 500, maxHp: 500, owner: "player1", targets: ["buildings"], domElement: null, hpBarElement: null},
+        {id: "p1-tower2", x: 300, y: 100, hp: 500, maxHp: 500, owner: "player1", targets: ["buildings"], domElement: null, hpBarElement: null},
+        {id: "p1-tower3", x: 500, y: 100, hp: 500, maxHp: 500, owner: "player1", targets: ["buildings"], domElement: null, hpBarElement: null}
+      ],
+      player2: [
+        {id: "p2-tower1", x: 100, y: 350, hp: 500, maxHp: 500, owner: "player2", targets: ["buildings"], domElement: null, hpBarElement: null},
+        {id: "p2-tower2", x: 300, y: 350, hp: 500, maxHp: 500, owner: "player2", targets: ["buildings"], domElement: null, hpBarElement: null},
+        {id: "p2-tower3", x: 500, y: 350, hp: 500, maxHp: 500, owner: "player2", targets: ["buildings"], domElement: null, hpBarElement: null}
+      ]
+    };
+
+    // Card data cache from Firestore "cards" collection
+    // Format expected: document id = card name, fields: hitpoints, damage, targets, etc.
+    let cardDataCache = {};
+
+    // Load card data from firestore
+    async function loadCardData() {
+      const cardsSnapshot = await db.collection("cards").get();
+      cardsSnapshot.forEach(doc => {
+        const data = doc.data();
+        cardDataCache[doc.id] = {
+          name: data.name || doc.id,
+          hitpoints: data.hitpoints || 100,
+          damage: data.damage || 10,
+          targets: (data.targets || "ground").split(",").map(t => t.trim()),
+          elixir: data.elixr || 1,
+          upgradecost: data.upgradecost || 0,
+          bio: data.bio || "",
+          count: data.count || 1,
+          speed: data.speed || "medium",
+          range: data.range || "melee",
+          hitspeed: data.hitspeed || 1.0
+        };
+      });
+    }
 
     async function loadBattle() {
       if (!lobbyId) {
@@ -181,16 +241,20 @@
         // Determine which player is current user, load their deck
         if (currentUser.uid === uid1) {
           playerDeck = Array.isArray(player1.deck) ? [...player1.deck] : [];
+          playerSide = "player1";
         } else if (currentUser.uid === uid2) {
           playerDeck = Array.isArray(player2.deck) ? [...player2.deck] : [];
+          playerSide = "player2";
         } else {
-          // User not in this lobby for some reason - redirect home
           alert("You are not in this battle.");
           window.location.href = "home.html";
           return;
         }
 
+        await loadCardData();
+
         renderHand();
+        renderTowers();
 
         startText.textContent = "✅ Battle Ready! Select a card and place it on your side.";
 
@@ -200,19 +264,24 @@
       }
     }
 
-    // Render the player's hand cards
+    // Render hand cards visually
     function renderHand() {
       hand.innerHTML = '';
-      playerDeck.forEach((card, idx) => {
+      playerDeck.forEach((cardId, idx) => {
+        const cardData = cardDataCache[cardId];
+        if (!cardData) return;
         const cardEl = document.createElement('div');
         cardEl.classList.add('card');
-        cardEl.textContent = card;
+        cardEl.textContent = cardData.name || cardId;
+        cardEl.title = `${cardData.name}\nHP: ${cardData.hitpoints}\nDamage: ${cardData.damage}\nTargets: ${cardData.targets.join(", ")}`;
         cardEl.dataset.idx = idx;
         cardEl.addEventListener('click', () => {
-          if (selectedCard === idx) {
-            selectedCard = null;
+          if (selectedCardIndex === idx) {
+            selectedCardIndex = null;
+            selectedCardData = null;
           } else {
-            selectedCard = idx;
+            selectedCardIndex = idx;
+            selectedCardData = cardData;
           }
           updateHandSelection();
         });
@@ -221,50 +290,233 @@
       updateHandSelection();
     }
 
-    // Update visual selection in hand
     function updateHandSelection() {
-      const cards = document.querySelectorAll('.card');
+      const cards = hand.querySelectorAll('.card');
       cards.forEach((c, i) => {
-        c.classList.toggle('selected', i === selectedCard);
+        c.classList.toggle('selected', i === selectedCardIndex);
       });
     }
 
-    // Place card on map on valid click
-    map.addEventListener('click', (e) => {
-      if (selectedCard === null) return;
+    // Render towers visually on map with HP bars
+    function renderTowers() {
+      // Remove old tower DOMs
+      document.querySelectorAll('.tower').forEach(t => t.remove());
+      [...towers.player1, ...towers.player2].forEach(tower => {
+        const towerEl = document.createElement('div');
+        towerEl.classList.add('tower');
+        towerEl.style.position = 'absolute';
+        towerEl.style.left = `${tower.x}px`;
+        towerEl.style.top = `${tower.y}px`;
+        towerEl.style.width = '80px';
+        towerEl.style.height = '100px';
+        towerEl.style.backgroundColor = tower.owner === "player1" ? "#880000cc" : "#004488cc";
+        towerEl.style.border = tower.owner === "player1" ? "2px solid #cc0000" : "2px solid #0077cc";
+        towerEl.style.borderRadius = '12px';
+        towerEl.style.color = '#fff';
+        towerEl.style.fontWeight = 'bold';
+        towerEl.style.display = 'flex';
+        towerEl.style.justifyContent = 'center';
+        towerEl.style.alignItems = 'center';
+        towerEl.textContent = "Tower";
 
-      // Get click relative position
+        // HP bar
+        const hpBarContainer = document.createElement('div');
+        hpBarContainer.className = 'hp-bar-container';
+        hpBarContainer.style.top = '5px';
+        hpBarContainer.style.position = 'absolute';
+        hpBarContainer.style.left = '50%';
+        hpBarContainer.style.transform = 'translateX(-50%)';
+        hpBarContainer.style.width = '70%';
+        hpBarContainer.style.height = '8px';
+        hpBarContainer.style.background = '#333';
+        hpBarContainer.style.borderRadius = '4px';
+
+        const hpBar = document.createElement('div');
+        hpBar.className = 'hp-bar';
+        hpBar.style.width = '100%';
+        hpBar.style.height = '100%';
+        hpBar.style.backgroundColor = '#0f0';
+        hpBar.style.borderRadius = '4px';
+
+        hpBarContainer.appendChild(hpBar);
+        towerEl.appendChild(hpBarContainer);
+
+        map.appendChild(towerEl);
+
+        tower.domElement = towerEl;
+        tower.hpBarElement = hpBar;
+      });
+    }
+
+    // Place card on map visually and add to placedCards with full data
+    function placeCardOnMap(cardId, x, y) {
+      const cardData = cardDataCache[cardId];
+      if (!cardData) return;
+
+      const cardEl = document.createElement('div');
+      cardEl.classList.add('placed-card');
+      cardEl.textContent = cardData.name || cardId;
+      cardEl.style.left = `${x - 30}px`;
+      cardEl.style.top = `${y - 40}px`;
+
+      // HP bar container
+      const hpBarContainer = document.createElement('div');
+      hpBarContainer.className = 'hp-bar-container';
+      hpBarContainer.style.top = '5px';
+      hpBarContainer.style.position = 'absolute';
+      hpBarContainer.style.left = '50%';
+      hpBarContainer.style.transform = 'translateX(-50%)';
+      hpBarContainer.style.width = '70%';
+      hpBarContainer.style.height = '8px';
+      hpBarContainer.style.background = '#333';
+      hpBarContainer.style.borderRadius = '4px';
+
+      const hpBar = document.createElement('div');
+      hpBar.className = 'hp-bar';
+      hpBar.style.width = '100%';
+      hpBar.style.height = '100%';
+      hpBar.style.backgroundColor = '#0f0';
+      hpBar.style.borderRadius = '4px';
+
+      hpBarContainer.appendChild(hpBar);
+      cardEl.appendChild(hpBarContainer);
+
+      map.appendChild(cardEl);
+
+      // Add to placed cards array
+      placedCards.push({
+        id: cardId,
+        owner: playerSide,
+        x,
+        y,
+        hp: cardData.hitpoints,
+        maxHp: cardData.hitpoints,
+        damage: cardData.damage,
+        targets: cardData.targets,
+        domElement: cardEl,
+        hpBarElement: hpBar
+      });
+
+      // Remove from playerDeck and re-render hand
+      playerDeck.splice(selectedCardIndex, 1);
+      selectedCardIndex = null;
+      selectedCardData = null;
+      renderHand();
+      startText.textContent = "Card placed! Select another card or wait for battle.";
+    }
+
+    // Find target for a card to attack
+    function findTarget(card) {
+      const enemySide = card.owner === 'player1' ? 'player2' : 'player1';
+
+      // Priority 1: Enemy cards matching card.targets
+      const enemyCards = placedCards.filter(c =>
+        c.owner === enemySide &&
+        c.hp > 0 &&
+        c.targets.some(t => card.targets.includes(t))
+      );
+
+      if (enemyCards.length > 0) {
+        enemyCards.sort((a, b) => {
+          const distA = distance(card.x, card.y, a.x, a.y);
+          const distB = distance(card.x, card.y, b.x, b.y);
+          return distA - distB;
+        });
+        return enemyCards[0];
+      }
+
+      // Priority 2: Enemy towers (target "buildings")
+      if (card.targets.includes('buildings')) {
+        const enemyTowers = towers[enemySide].filter(t => t.hp > 0);
+        if (enemyTowers.length > 0) {
+          enemyTowers.sort((a, b) => {
+            const distA = distance(card.x, card.y, a.x, a.y);
+            const distB = distance(card.x, card.y, b.x, b.y);
+            return distA - distB;
+          });
+          return enemyTowers[0];
+        }
+      }
+
+      // No target found
+      return null;
+    }
+
+    // Calculate Euclidean distance
+    function distance(x1, y1, x2, y2) {
+      return Math.hypot(x2 - x1, y2 - y1);
+    }
+
+    // Apply damage to target (card or tower)
+    function applyDamage(target, damage) {
+      target.hp -= damage;
+      if (target.hp < 0) target.hp = 0;
+
+      // Update HP bar width and color
+      const hpPercent = target.hp / target.maxHp;
+      if (target.hpBarElement) {
+        target.hpBarElement.style.width = (hpPercent * 100) + '%';
+        if (hpPercent > 0.5) {
+          target.hpBarElement.style.backgroundColor = '#0f0';
+        } else if (hpPercent > 0.2) {
+          target.hpBarElement.style.backgroundColor = '#ff0';
+        } else {
+          target.hpBarElement.style.backgroundColor = '#f00';
+        }
+      }
+
+      // Remove card if dead
+      if (target.hp <= 0) {
+        if (target.domElement) {
+          target.domElement.remove();
+        }
+        if (placedCards.includes(target)) {
+          placedCards = placedCards.filter(c => c !== target);
+        }
+        // TODO: Check for game end condition if tower destroyed
+      }
+    }
+
+    // AI attack loop runs every 1 second
+    function aiAttackLoop() {
+      placedCards.forEach(card => {
+        if (card.hp <= 0) return;
+        const target = findTarget(card);
+        if (target) {
+          applyDamage(target, card.damage);
+          // Optional: show some animation or effect
+          startText.textContent = `${card.id} attacks ${target.id} for ${card.damage} damage!`;
+        }
+      });
+
+      // Also check towers HP to update color / game end conditions here if needed
+
+      setTimeout(aiAttackLoop, 1000);
+    }
+
+    // User click to place card on bottom half only
+    map.addEventListener('click', (e) => {
+      if (selectedCardIndex === null) return;
+
       const rect = map.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
 
-      // Only allow placement on bottom half (player's side)
-      if (y < rect.height / 2) {
+      // Player side only (bottom half)
+      if (playerSide === "player1" && y < rect.height / 2) {
         alert("You can only place cards in your own area (bottom half)!");
         return;
       }
+      if (playerSide === "player2" && y > rect.height / 2) {
+        alert("You can only place cards in your own area (top half)!");
+        return;
+      }
 
-      const cardId = playerDeck[selectedCard];
-
+      const cardId = playerDeck[selectedCardIndex];
       placeCardOnMap(cardId, x, y);
-
-      // Remove card from hand & reset selection
-      playerDeck.splice(selectedCard, 1);
-      selectedCard = null;
-      renderHand();
-
-      // TODO: Add your logic here to notify backend about card placement
     });
 
-    // Function to visually place card on map
-    function placeCardOnMap(cardId, x, y) {
-      const placedCard = document.createElement('div');
-      placedCard.classList.add('placed-card');
-      placedCard.textContent = cardId;
-      placedCard.style.left = `${x - 30}px`;
-      placedCard.style.top = `${y - 40}px`;
-      map.appendChild(placedCard);
-    }
+    let playerSide = null;
 
     auth.onAuthStateChanged((user) => {
       if (!user) {
@@ -272,7 +524,9 @@
         return;
       }
       currentUser = user;
-      loadBattle();
+      loadBattle().then(() => {
+        aiAttackLoop();
+      });
     });
   </script>
 </body>
