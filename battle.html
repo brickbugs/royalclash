@@ -178,7 +178,7 @@ if (!lobbyId) {
 
 // Load card data from Firestore "cards" collection
 async function loadCardData() {
-  const cardsSnapshot = await db.collection("cards").get();  // <--- Fetch snapshot here
+  const cardsSnapshot = await db.collection("cards").get();
   cardsSnapshot.forEach(doc => {
     const id = doc.id.toLowerCase();
     const data = doc.data();
@@ -198,16 +198,16 @@ async function loadCardData() {
   console.log("Card data loaded:", Object.keys(cardDataCache));
 }
 
+// Load battle data, set decks and sides
 async function loadBattle() {
   startText.textContent = "Loading battle data...";
-
   try {
     const lobbySnap = await db.collection("lobbies").doc(lobbyId).get();
     const lobbyData = lobbySnap.data();
 
     if (!lobbyData || !Array.isArray(lobbyData.players) || lobbyData.players.length < 2) {
       startText.textContent = "❌ Waiting for opponent...";
-      return false;  // battle not ready yet
+      return false;
     }
 
     const [uid1, uid2] = lobbyData.players;
@@ -239,7 +239,6 @@ async function loadBattle() {
       return false;
     }
 
-    // Await card data load here!
     await loadCardData();
 
     renderHand(playerDeck);
@@ -247,7 +246,7 @@ async function loadBattle() {
 
     startText.textContent = "✅ Battle Ready! Select a card and place it on your side.";
 
-    return true;  // battle is ready
+    return true;
   } catch (err) {
     console.error(err);
     startText.textContent = "❌ Error loading battle.";
@@ -255,21 +254,17 @@ async function loadBattle() {
   }
 }
 
-
+// Render your hand of cards (clickable)
 function renderHand(deck) {
   hand.innerHTML = '';
   deck.forEach((cardId, idx) => {
-    if (!cardId) {
-      console.warn(`Skipping invalid cardId at index ${idx}:`, cardId);
-      return;
-    }
+    if (!cardId) return;
     const cardIdNormalized = cardId.toLowerCase();
     const cardData = cardDataCache[cardIdNormalized];
     if (!cardData) {
       console.warn(`Card data missing for cardId: ${cardId}`);
       return;
     }
-    // rest of your rendering code
     const cardEl = document.createElement('div');
     cardEl.classList.add('card');
     cardEl.textContent = cardData.name || cardId;
@@ -290,54 +285,7 @@ function renderHand(deck) {
   updateHandSelection();
 }
 
-   // Utility function to calculate distance between two points
-function distance(x1, y1, x2, y2) {
-  return Math.hypot(x2 - x1, y2 - y1);
-}
-
-// Find nearest enemy card within placedCards
-function findTarget(card) {
-  const enemies = placedCards.filter(c => c.owner !== card.owner && c.hp > 0);
-  if (enemies.length === 0) return null;
-
-  let nearest = null;
-  let nearestDist = Infinity;
-  enemies.forEach(enemy => {
-    const dist = distance(card.x, card.y, enemy.x, enemy.y);
-    if (dist < nearestDist) {
-      nearestDist = dist;
-      nearest = enemy;
-    }
-  });
-  return nearest;
-}
-
-// Apply damage to a target card and update health bar UI
-function applyDamage(target, damage) {
-  target.hp -= damage;
-  if (target.hp < 0) target.hp = 0;
-
-  if (target.hpBarElement) {
-    const hpPercent = (target.hp / target.maxHp) * 100;
-    target.hpBarElement.style.width = hpPercent + "%";
-
-    if (hpPercent < 30) {
-      target.hpBarElement.style.backgroundColor = "#f00"; // red low hp
-    } else if (hpPercent < 60) {
-      target.hpBarElement.style.backgroundColor = "#ff9900"; // orange mid hp
-    } else {
-      target.hpBarElement.style.backgroundColor = "#0f0"; // green high hp
-    }
-  }
-
-  if (target.hp === 0) {
-    if (target.domElement) {
-      target.domElement.style.opacity = "0.5"; // faded dead card
-    }
-  }
-}
-
-
+// Highlight the selected card in hand
 function updateHandSelection() {
   const cards = hand.querySelectorAll(".card");
   cards.forEach((cardEl, i) => {
@@ -345,12 +293,256 @@ function updateHandSelection() {
   });
 }
 
+// Render enemy hand info (optional, console log here)
 function renderEnemyHand(deck) {
-  // Optionally show enemy cards somewhere, or keep internal for AI logic
   console.log("Enemy deck loaded with cards:", deck.length);
 }
+
+// Place card on map for player when clicked
+function placeCardOnMap(cardId, x, y) {
+  const cardData = cardDataCache[cardId.toLowerCase()];
+  if (!cardData) {
+    console.warn(`Card data missing for cardId: ${cardId}`);
+    return;
+  }
+
+  const cardEl = document.createElement('div');
+  cardEl.classList.add('placed-card');
+  cardEl.textContent = cardData.name || cardId;
+  cardEl.style.left = `${x - 30}px`;
+  cardEl.style.top = `${y - 40}px`;
+
+  // HP bar
+  const hpBarContainer = document.createElement('div');
+  hpBarContainer.className = 'hp-bar-container';
+  const hpBar = document.createElement('div');
+  hpBar.className = 'hp-bar';
+  hpBar.style.width = '100%';
+  hpBarContainer.appendChild(hpBar);
+  cardEl.appendChild(hpBarContainer);
+
+  map.appendChild(cardEl);
+
+  placedCards.push({
+    id: cardId,
+    owner: playerSide,
+    x,
+    y,
+    hp: cardData.hitpoints,
+    maxHp: cardData.hitpoints,
+    damage: cardData.damage,
+    targets: cardData.targets,
+    speed: parseSpeed(cardData.speed),
+    range: parseRange(cardData.range),
+    hitspeed: cardData.hitspeed || 1.0,
+    attackCooldown: 0,
+    domElement: cardEl,
+    hpBarElement: hpBar,
+  });
+
+  // Remove the placed card from playerDeck so it disappears from hand
+  playerDeck.splice(selectedCardIndex, 1);
+  renderHand(playerDeck);
+
+  // Clear selection
+  selectedCardIndex = null;
+  selectedCardData = null;
+  startText.textContent = "Card placed! Select another card or wait for battle.";
+}
+
+// Place enemy cards on map automatically
+function placeEnemyCards(deck) {
+  // Wait for next frame so map layout is settled
+  requestAnimationFrame(() => {
+    const mapRect = map.getBoundingClientRect();
+    const startX = 100;
+    const startY = mapRect.height * 0.75;
+
+    deck.forEach((cardId, i) => {
+      const x = startX + i * 100;
+      const y = startY + (Math.random() * 20 - 10);
+      placeCardOnMapForEnemy(cardId, x, y);
+    });
+  });
+}
+
+function placeCardOnMapForEnemy(cardId, x, y) {
+  if (!cardId || typeof cardId !== 'string') {
+    console.warn('Invalid cardId passed to placeCardOnMapForEnemy:', cardId);
+    return;
+  }
+
+  const cardIdNormalized = cardId.toLowerCase();
+  const cardData = cardDataCache[cardIdNormalized];
+  if (!cardData) {
+    console.warn(`Card data missing for cardId: ${cardId}`);
+    return;
+  }
+
+  const cardEl = document.createElement('div');
+  cardEl.classList.add('placed-card');
+  cardEl.textContent = cardData.name || cardId;
+  cardEl.style.left = `${x - 30}px`;
+  cardEl.style.top = `${y - 40}px`;
+
+  const hpBarContainer = document.createElement('div');
+  hpBarContainer.className = 'hp-bar-container';
+
+  const hpBar = document.createElement('div');
+  hpBar.className = 'hp-bar';
+  hpBar.style.width = '100%';
+
+  hpBarContainer.appendChild(hpBar);
+  cardEl.appendChild(hpBarContainer);
+
+  map.appendChild(cardEl);
+
+  placedCards.push({
+    id: cardId,
+    owner: enemySide,
+    x,
+    y,
+    hp: cardData.hitpoints,
+    maxHp: cardData.hitpoints,
+    damage: cardData.damage,
+    targets: cardData.targets,
+    speed: parseSpeed(cardData.speed),
+    range: parseRange(cardData.range),
+    hitspeed: cardData.hitspeed || 1.0,
+    attackCooldown: 0,
+    domElement: cardEl,
+    hpBarElement: hpBar,
+  });
+}
+
+function parseSpeed(speedStr) {
+  switch ((speedStr || "").toLowerCase()) {
+    case "slow": return 30;
+    case "medium": return 60;
+    case "fast": return 120;
+    default:
+      let n = parseFloat(speedStr);
+      return isNaN(n) ? 60 : n;
+  }
+}
+
+function parseRange(rangeStr) {
+  switch ((rangeStr || "").toLowerCase()) {
+    case "melee": return 40;
+    case "short": return 80;
+    case "medium": return 150;
+    case "long": return 250;
+    default:
+      let n = parseFloat(rangeStr);
+      return isNaN(n) ? 50 : n;
+  }
+}
+
+function distance(x1, y1, x2, y2) {
+  return Math.hypot(x2 - x1, y2 - y1);
+}
+
+function gameLoop() {
+  const now = performance.now();
+  if (!gameLoop.lastTime) gameLoop.lastTime = now;
+  const deltaTime = (now - gameLoop.lastTime) / 1000;
+  gameLoop.lastTime = now;
+
+  placedCards.forEach(card => {
+    if (card.hp <= 0) return;
+
+    // Cooldown countdown
+    card.attackCooldown = Math.max(0, card.attackCooldown - deltaTime);
+
+    // Find nearest enemy in range
+    const target = placedCards.find(c =>
+      c.owner !== card.owner && c.hp > 0 &&
+      distance(card.x, card.y, c.x, c.y) <= card.range
+    );
+
+    if (!target) {
+      // No target in range, move towards nearest enemy if any
+      const nearestEnemy = placedCards.find(c => c.owner !== card.owner && c.hp > 0);
+      if (!nearestEnemy) return;
+
+      const dx = nearestEnemy.x - card.x;
+      const dy = nearestEnemy.y - card.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist > card.range) {
+        const angle = Math.atan2(dy, dx);
+        const moveDist = Math.min(card.speed * deltaTime, dist - card.range);
+        card.x += Math.cos(angle) * moveDist;
+        card.y += Math.sin(angle) * moveDist;
+        if (card.domElement) {
+          card.domElement.style.left = `${card.x - 30}px`;
+          card.domElement.style.top = `${card.y - 40}px`;
+        }
+      }
+    } else {
+      // Attack target if cooldown done
+      if (card.attackCooldown === 0) {
+        target.hp -= card.damage;
+        if (target.hp < 0) target.hp = 0;
+        card.attackCooldown = card.hitspeed;
+
+        // Update target HP bar visually
+        if (target.hpBarElement) {
+          const hpPercent = (target.hp / target.maxHp) * 100;
+          target.hpBarElement.style.width = `${hpPercent}%`;
+          target.hpBarElement.style.backgroundColor = hpPercent < 30 ? "#f00" : "#0f0";
+        }
+
+        // Fade out dead target visually
+        if (target.hp === 0 && target.domElement) {
+          target.domElement.style.opacity = "0.5";
+        }
+
+        console.log(`${card.id} attacks ${target.id} for ${card.damage} damage!`);
+      }
+    }
+  });
+
+  requestAnimationFrame(gameLoop);
+}
+
+// Card placement by clicking map
+map.addEventListener("click", (e) => {
+  if (selectedCardIndex === null || !selectedCardData) {
+    startText.textContent = "Select a card first!";
+    return;
+  }
+
+  const rect = map.getBoundingClientRect();
+  const clickX = e.clientX - rect.left;
+  const clickY = e.clientY - rect.top;
+
+  if ((playerSide === "player1" && clickY > rect.height / 2) ||
+      (playerSide === "player2" && clickY < rect.height / 2)) {
+    startText.textContent = "Place cards only on your side!";
+    return;
+  }
+
+  placeCardOnMap(playerDeck[selectedCardIndex], clickX, clickY);
+});
+
+// Listen for auth changes and initialize game
+auth.onAuthStateChanged(async (user) => {
+  if (!user) {
+    window.location.href = "index.html";
+    return;
+  }
+  currentUser = user;
+
+  const ready = await loadBattle();
+  if (!ready) return;
+
+  placeEnemyCards(enemyDeck);
+  startPlacementListener();
+  gameLoop();
+});
+
+// Listen for opponent card placements in Firestore (optional real-time sync)
 function startPlacementListener() {
-  // Detach previous listener if any
   if (window.unsubscribePlacements) {
     window.unsubscribePlacements();
   }
@@ -360,7 +552,7 @@ function startPlacementListener() {
     .collection("placements")
     .orderBy("createdAt")
     .onSnapshot(snapshot => {
-      // Remove existing placed card DOM elements
+      // Clear old placed cards DOM elements owned by player (optional)
       placedCards.forEach(p => {
         if (p.domElement && p.domElement.parentElement) {
           p.domElement.parentElement.removeChild(p.domElement);
@@ -368,7 +560,7 @@ function startPlacementListener() {
       });
       placedCards = [];
 
-      // Render each placement document
+      // Re-render all placed cards from snapshot
       snapshot.forEach(doc => {
         const data = doc.data();
         renderPlacedCard(doc.id, data);
@@ -392,7 +584,6 @@ function renderPlacedCard(id, data) {
   cardEl.style.top = `${data.y - 40}px`;
   cardEl.style.zIndex = data.owner === playerSide ? 10 : 5;
 
-  // HP bar container and bar
   const hpBarContainer = document.createElement("div");
   hpBarContainer.className = "hp-bar-container";
 
@@ -421,6 +612,7 @@ function renderPlacedCard(id, data) {
     hpBarElement: hpBar,
   });
 }
+
 // 1. Define placeCardOnMap function first
 function placeCardOnMap(cardId, x, y) {
   const cardData = cardDataCache[cardId.toLowerCase()];
