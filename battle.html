@@ -521,8 +521,8 @@ function gameLoop() {
           card.y += Math.sin(angle) * moveDist;
 
           if (card.domElement) {
-            card.domElement.style.left = ${card.x - 30}px;
-            card.domElement.style.top = ${card.y - 40}px;
+            card.domElement.style.left = `${card.x - 30}px`;
+          card.domElement.style.top = `${card.y - 40}px`;
           }
         }
       }
