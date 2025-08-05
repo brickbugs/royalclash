@@ -537,15 +537,19 @@ function gameLoop() {
           card.targetX = card.x;
           card.targetY = card.y;
 
-          // Sync movement to Firestore
-          db.collection("lobbies")
-            .doc(lobbyId)
-            .collection("placements")
-            .doc(card.id)
-            .update({
-              x: card.x,
-              y: card.y,
-            }).catch(err => console.error("Movement update failed:", err));
+         if (card.id && typeof card.id === "string") {
+  db.collection("lobbies")
+    .doc(lobbyId)
+    .collection("placements")
+    .doc(card.id)
+    .update({
+      x: card.x,
+      y: card.y,
+    }).catch(err => console.error("Movement update failed:", err));
+} else {
+  console.warn("Skipping movement update: invalid card.id", card);
+}
+
         }
       }
       return;
