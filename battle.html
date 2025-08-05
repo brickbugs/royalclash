@@ -1,66 +1,121 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Battle</title>
-  <meta charset="UTF-8" />
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      background-color: #181818;
-      color: #fff;
-      text-align: center;
-      padding: 40px;
-    }
-    h1 {
-      font-size: 32px;
-    }
-    .players {
-      display: flex;
-      justify-content: space-around;
-      margin-top: 40px;
-    }
-    .player-box {
-      background-color: #292929;
-      padding: 20px;
-      border-radius: 12px;
-      width: 40%;
-    }
-    .deck {
-      margin-top: 15px;
-      display: flex;
-      justify-content: center;
-      flex-wrap: wrap;
-    }
-    .card {
-      background: #444;
-      border: 1px solid #777;
-      border-radius: 8px;
-      padding: 10px;
-      margin: 5px;
-      width: 60px;
-      height: 80px;
-    }
-    #startText {
-      margin-top: 30px;
-      font-size: 22px;
-      color: #0f0;
-    }
-  </style>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Clash Royale Clone - Battle</title>
+<style>
+  body, html {
+    margin: 0; padding: 0; height: 100%; background: #181818; color: white; font-family: Arial, sans-serif;
+    user-select: none;
+    overflow: hidden;
+  }
+  #battleArea {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  #map {
+    flex-grow: 1;
+    background: linear-gradient(to top, #0b5700 0%, #147b00 100%);
+    position: relative;
+    cursor: crosshair;
+  }
+  #map::before {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: rgba(255, 255, 255, 0.2);
+  }
+  #hand {
+    height: 140px;
+    background: #222;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 10px;
+    gap: 15px;
+    box-shadow: 0 -5px 15px rgba(0,0,0,0.7);
+  }
+  .card {
+    background: #444;
+    border-radius: 12px;
+    width: 80px;
+    height: 110px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 24px;
+    font-weight: bold;
+    color: white;
+    box-shadow: 0 3px 6px rgba(0,0,0,0.8);
+    user-select: none;
+    transition: transform 0.2s ease;
+    cursor: pointer;
+  }
+  .card.selected {
+    outline: 3px solid #4caf50;
+    transform: scale(1.1);
+  }
+  /* Placed cards on map */
+  .placed-card {
+    position: absolute;
+    width: 60px;
+    height: 80px;
+    background: #4caf50cc;
+    border-radius: 10px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-weight: bold;
+    color: #fff;
+    pointer-events: none;
+    user-select: none;
+  }
+
+  #startText {
+    position: absolute;
+    top: 10px;
+    width: 100%;
+    text-align: center;
+    font-size: 22px;
+    color: #0f0;
+    pointer-events: none;
+    user-select: none;
+    z-index: 100;
+  }
+  /* Player names at top of map */
+  #playerNames {
+    position: absolute;
+    top: 10px;
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    padding: 0 30px;
+    font-size: 18px;
+    color: white;
+    pointer-events: none;
+    user-select: none;
+    z-index: 100;
+  }
+</style>
 </head>
 <body>
-  <h1>⚔️ Battle Begins</h1>
-  <div class="players">
-    <div class="player-box" id="player1">
-      <h2>Player 1</h2>
-      <div class="deck" id="deck1"></div>
+  <div id="battleArea">
+    <div id="map" title="Click your area to place card">
+      <div id="playerNames">
+        <div id="player1Name">Player 1</div>
+        <div id="player2Name">Player 2</div>
+      </div>
+      <div id="startText">Loading battle...</div>
     </div>
-    <div class="player-box" id="player2">
-      <h2>Player 2</h2>
-      <div class="deck" id="deck2"></div>
-    </div>
+    <div id="hand"></div>
   </div>
-
-  <div id="startText">Loading battle...</div>
 
   <!-- Firebase -->
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
@@ -83,86 +138,132 @@
     const db = firebase.firestore();
 
     const lobbyId = localStorage.getItem("lobbyId");
+
+    // Elements
+    const startText = document.getElementById("startText");
+    const player1NameEl = document.getElementById("player1Name");
+    const player2NameEl = document.getElementById("player2Name");
+    const map = document.getElementById("map");
+    const hand = document.getElementById("hand");
+
     let currentUser = null;
+    let playerDeck = [];
+    let selectedCard = null;
 
     async function loadBattle() {
       if (!lobbyId) {
-        document.getElementById("startText").textContent = "❌ Lobby ID not found.";
+        startText.textContent = "❌ Lobby ID not found.";
         return;
       }
 
       try {
-        const lobbyDocRef = db.collection("lobbies").doc(lobbyId);
-        const lobbySnap = await lobbyDocRef.get();
+        const lobbySnap = await db.collection("lobbies").doc(lobbyId).get();
         const lobbyData = lobbySnap.data();
-
         if (!lobbyData || lobbyData.players.length < 2) {
-          document.getElementById("startText").textContent = "❌ Waiting for opponent...";
+          startText.textContent = "❌ Waiting for opponent...";
           return;
         }
 
         const [uid1, uid2] = lobbyData.players;
 
-        const player1Snap = await db.collection("players").doc(uid1).get();
-        const player2Snap = await db.collection("players").doc(uid2).get();
+        // Load player data
+        const [player1Snap, player2Snap] = await Promise.all([
+          db.collection("players").doc(uid1).get(),
+          db.collection("players").doc(uid2).get(),
+        ]);
 
         const player1 = player1Snap.data();
         const player2 = player2Snap.data();
 
-        currentUser = auth.currentUser;
+        player1NameEl.textContent = player1.username || "Player 1";
+        player2NameEl.textContent = player2.username || "Player 2";
 
-        // Display usernames
-        document.querySelector("#player1 h2").textContent = player1.username;
-        document.querySelector("#player2 h2").textContent = player2.username;
-
-        // Load decks
-        const deck1 = player1.deck || [];
-        const deck2 = player2.deck || [];
-
-        const deck1El = document.getElementById("deck1");
-        const deck2El = document.getElementById("deck2");
-
-        deck1El.innerHTML = "";
-        deck2El.innerHTML = "";
-
-        for (const card of deck1) {
-          const cardEl = document.createElement("div");
-          cardEl.className = "card";
-          cardEl.textContent = card;
-          deck1El.appendChild(cardEl);
+        // Determine which player is current user, load their deck
+        if (currentUser.uid === uid1) {
+          playerDeck = Array.isArray(player1.deck) ? [...player1.deck] : [];
+        } else if (currentUser.uid === uid2) {
+          playerDeck = Array.isArray(player2.deck) ? [...player2.deck] : [];
+        } else {
+          // User not in this lobby for some reason - redirect home
+          alert("You are not in this battle.");
+          window.location.href = "home.html";
+          return;
         }
 
-        for (const card of deck2) {
-          const cardEl = document.createElement("div");
-          cardEl.className = "card";
-          cardEl.textContent = card;
-          deck2El.appendChild(cardEl);
-        }
+        renderHand();
 
-        document.getElementById("startText").textContent = "✅ Battle Ready! (Start your game logic here)";
-
-        // Listen for lobby deletion (opponent left)
-        lobbyDocRef.onSnapshot((doc) => {
-          if (!doc.exists) {
-            alert("Opponent left the battle or lobby ended.");
-            localStorage.removeItem("lobbyId");
-            window.location.href = "home.html";
-          }
-        });
-
-        // On unload, delete lobby to end battle for both players
-        window.addEventListener("beforeunload", async (event) => {
-          try {
-            await lobbyDocRef.delete();
-          } catch (err) {
-            console.error("Error deleting lobby:", err);
-          }
-        });
+        startText.textContent = "✅ Battle Ready! Select a card and place it on your side.";
 
       } catch (err) {
         console.error(err);
-        document.getElementById("startText").textContent = "❌ Error loading battle.";
+        startText.textContent = "❌ Error loading battle.";
       }
+    }
+
+    // Render the player's hand cards
+    function renderHand() {
+      hand.innerHTML = '';
+      playerDeck.forEach((card, idx) => {
+        const cardEl = document.createElement('div');
+        cardEl.classList.add('card');
+        cardEl.textContent = card;
+        cardEl.dataset.idx = idx;
+        cardEl.addEventListener('click', () => {
+          if (selectedCard === idx) {
+            selectedCard = null;
+          } else {
+            selectedCard = idx;
+          }
+          updateHandSelection();
+        });
+        hand.appendChild(cardEl);
+      });
+      updateHandSelection();
+    }
+
+    // Update visual selection in hand
+    function updateHandSelection() {
+      const cards = document.querySelectorAll('.card');
+      cards.forEach((c, i) => {
+        c.classList.toggle('selected', i === selectedCard);
+      });
+    }
+
+    // Place card on map on valid click
+    map.addEventListener('click', (e) => {
+      if (selectedCard === null) return;
+
+      // Get click relative position
+      const rect = map.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+
+      // Only allow placement on bottom half (player's side)
+      if (y < rect.height / 2) {
+        alert("You can only place cards in your own area (bottom half)!");
+        return;
+      }
+
+      const cardId = playerDeck[selectedCard];
+
+      placeCardOnMap(cardId, x, y);
+
+      // Remove card from hand & reset selection
+      playerDeck.splice(selectedCard, 1);
+      selectedCard = null;
+      renderHand();
+
+      // TODO: Add your logic here to notify backend about card placement
+    });
+
+    // Function to visually place card on map
+    function placeCardOnMap(cardId, x, y) {
+      const placedCard = document.createElement('div');
+      placedCard.classList.add('placed-card');
+      placedCard.textContent = cardId;
+      placedCard.style.left = `${x - 30}px`;
+      placedCard.style.top = `${y - 40}px`;
+      map.appendChild(placedCard);
     }
 
     auth.onAuthStateChanged((user) => {
@@ -170,6 +271,7 @@
         window.location.href = "index.html";
         return;
       }
+      currentUser = user;
       loadBattle();
     });
   </script>
