@@ -158,7 +158,7 @@ const player1NameEl = document.getElementById("player1Name");
 const player2NameEl = document.getElementById("player2Name");
 
 let currentUser = null;
-let playerSide = null;
+let playerSide = null;   // "player1" or "player2"
 let enemySide = null;
 let playerDeck = [];
 let enemyDeck = [];
@@ -413,6 +413,7 @@ function gameLoop() {
   placedCards.forEach(card => {
     if (!card || typeof card.hp !== 'number' || card.hp <= 0) return;
 
+    // Smoothly interpolate position for all cards to match Firestore target position
     card.x += (card.targetX - card.x) * 0.15;
     card.y += (card.targetY - card.y) * 0.15;
 
@@ -421,16 +422,19 @@ function gameLoop() {
       card.domElement.style.top = `${card.y - 40}px`;
     }
 
-    if (card.owner !== playerSide) return;
+    // Only the host runs the game logic that moves cards and deals damage
+    if (playerSide !== "player1") return;
 
     card.attackCooldown = Math.max(0, card.attackCooldown - dt);
 
+    // Find enemy target in range
     const target = placedCards.find(c =>
       c.owner !== card.owner && c.hp > 0 &&
       distance(card.x, card.y, c.x, c.y) <= card.range
     );
 
     if (!target) {
+      // Move toward nearest enemy if no target in range
       const nearest = placedCards.find(c => c.owner !== card.owner && c.hp > 0);
       if (nearest) {
         const dx = nearest.x - card.x, dy = nearest.y - card.y;
@@ -442,6 +446,8 @@ function gameLoop() {
           card.y += Math.sin(angle) * moveDist;
           card.targetX = card.x;
           card.targetY = card.y;
+
+          // Update Firestore position (only host does this)
           if (card.id) {
             db.collection("lobbies").doc(lobbyId).collection("placements").doc(card.id)
               .update({ x: card.x, y: card.y }).catch(console.error);
@@ -451,11 +457,16 @@ function gameLoop() {
       return;
     }
 
+    // Attack target if cooldown elapsed
     if (card.attackCooldown <= 0) {
       const newHp = Math.max(0, target.hp - card.damage);
       card.attackCooldown = card.hitspeed;
-      db.collection("lobbies").doc(lobbyId).collection("placements").doc(target.id)
-        .update({ hp: newHp }).catch(console.error);
+
+      // Update Firestore HP of target (only host)
+      if (target.id) {
+        db.collection("lobbies").doc(lobbyId).collection("placements").doc(target.id)
+          .update({ hp: newHp }).catch(console.error);
+      }
     }
   });
 
@@ -473,6 +484,5 @@ auth.onAuthStateChanged(async user => {
   gameLoop();
 });
 </script>
-
 </body>
 </html>
