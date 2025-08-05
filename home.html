@@ -23,6 +23,11 @@
       font-size: 16px;
       cursor: pointer;
     }
+    #matchStatus {
+      margin-top: 20px;
+      font-weight: bold;
+      font-size: 18px;
+    }
   </style>
 </head>
 <body>
@@ -35,6 +40,9 @@
 
   <button onclick="goToDeck()">🃏 Deck Builder</button>
   <button onclick="logout()">🚪 Logout</button>
+  <button id="battleButton">⚔️ Find Battle</button>
+
+  <p id="matchStatus"></p>
 
   <!-- Firebase SDKs -->
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
@@ -58,6 +66,8 @@
 
     const usernameEl = document.getElementById("username");
     const coinsEl = document.getElementById("coins");
+    const battleButton = document.getElementById("battleButton");
+    const matchStatus = document.getElementById("matchStatus");
 
     auth.onAuthStateChanged(async (user) => {
       if (!user) {
@@ -91,6 +101,67 @@
     function goToDeck() {
       window.location.href = "deck.html";
     }
+
+    battleButton.addEventListener("click", async () => {
+      battleButton.disabled = true;
+      matchStatus.textContent = "🔍 Searching for an opponent...";
+
+      try {
+        const user = auth.currentUser;
+        if (!user) return;
+
+        const lobbiesRef = db.collection("lobbies");
+
+        // Step 1: Look for an open lobby
+        const openLobbySnapshot = await lobbiesRef
+          .where("ready", "==", false)
+          .limit(1)
+          .get();
+
+        let lobbyId;
+        if (!openLobbySnapshot.empty) {
+          // Join existing lobby
+          const lobbyDoc = openLobbySnapshot.docs[0];
+          const data = lobbyDoc.data();
+
+          if (data.players.length === 1 && data.players[0] !== user.uid) {
+            await lobbyDoc.ref.update({
+              players: [...data.players, user.uid],
+              ready: true
+            });
+            lobbyId = lobbyDoc.id;
+          }
+        }
+
+        if (!lobbyId) {
+          // Create a new lobby
+          const newLobby = await lobbiesRef.add({
+            players: [user.uid],
+            ready: false,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+          });
+          lobbyId = newLobby.id;
+        }
+
+        localStorage.setItem("lobbyId", lobbyId); // For battle.html
+
+        // Step 2: Listen for the lobby to be ready
+        const unsubscribe = lobbiesRef.doc(lobbyId).onSnapshot((doc) => {
+          const lobbyData = doc.data();
+          if (lobbyData && lobbyData.ready && lobbyData.players.length === 2) {
+            unsubscribe();
+            matchStatus.textContent = "✅ Match found! Starting battle...";
+            setTimeout(() => {
+              window.location.href = "battle.html";
+            }, 1000);
+          }
+        });
+      } catch (err) {
+        console.error("Matchmaking error:", err);
+        matchStatus.textContent = "❌ Failed to find battle. Try again.";
+        battleButton.disabled = false;
+      }
+    });
   </script>
 </body>
 </html>
