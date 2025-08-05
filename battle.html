@@ -260,7 +260,7 @@ function renderHand(deck) {
   hand.innerHTML = '';
   deck.forEach((cardId, idx) => {
     if (!cardId) {
-      console.warn(Skipping invalid cardId at index ${idx}:, cardId);
+     console.warn(`Skipping invalid cardId at index ${idx}:`, cardId);
       return;
     }
     const cardIdNormalized = cardId.toLowerCase();
