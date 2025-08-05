@@ -367,10 +367,12 @@ function renderPlacedCard(id, data) {
   const hpBar = document.createElement("div");
   hpBar.className = "hp-bar";
 
+  // ✅ Calculate HP percent and apply it
   const hpPercent = (data.hp / data.maxHp) * 100;
   hpBar.style.width = `${hpPercent}%`;
   hpBar.style.backgroundColor = hpPercent < 30 ? "#f00" : "#0f0";
 
+  // ✅ If dead, fade out
   if (data.hp <= 0) {
     cardEl.style.opacity = "0.5";
   }
@@ -379,13 +381,11 @@ function renderPlacedCard(id, data) {
   cardEl.appendChild(hpBarContainer);
   map.appendChild(cardEl);
 
-  return {
+  placedCards.push({
     id,
     owner: data.owner,
     x: data.x,
     y: data.y,
-    targetX: data.x,
-    targetY: data.y,
     hp: data.hp,
     maxHp: data.maxHp,
     damage: data.damage,
@@ -396,9 +396,8 @@ function renderPlacedCard(id, data) {
     attackCooldown: 0,
     domElement: cardEl,
     hpBarElement: hpBar,
-  };
+  });
 }
-
 
 // Parse speed and range helper
 function parseSpeed(speedStr) {
@@ -496,21 +495,6 @@ function gameLoop() {
   const deltaTime = (now - lastUpdateTime) / 1000;
   lastUpdateTime = now;
 
-  // --- Smoothly move all cards toward their target positions ---
-  placedCards.forEach(card => {
-    const dx = card.targetX - card.x;
-    const dy = card.targetY - card.y;
-
-    card.x += dx * 0.15;
-    card.y += dy * 0.15;
-
-    if (card.domElement) {
-      card.domElement.style.left = `${card.x - 30}px`;
-      card.domElement.style.top = `${card.y - 40}px`;
-    }
-  });
-
-  // --- Now handle attacks and movement toward enemies if no target ---
   placedCards.forEach(card => {
     if (card.hp <= 0) return; // Skip dead cards
 
@@ -537,20 +521,20 @@ function gameLoop() {
           card.y += Math.sin(angle) * moveDist;
 
           if (card.domElement) {
-            card.domElement.style.left = `${card.x - 30}px`;
-            card.domElement.style.top = `${card.y - 40}px`;
+            card.domElement.style.left = ${card.x - 30}px;
+            card.domElement.style.top = ${card.y - 40}px;
           }
         }
       }
       return;
     }
 
-    // Attack logic and Firestore sync
+    // ✅ Attack logic and Firestore sync
     if (card.attackCooldown === 0) {
       const newHp = Math.max(0, target.hp - card.damage);
       card.attackCooldown = card.hitspeed;
 
-      // Update Firestore so both clients reflect HP changes
+      // 🔥 Update Firestore so both clients reflect HP changes
       db.collection("lobbies")
         .doc(lobbyId)
         .collection("placements")
@@ -560,15 +544,15 @@ function gameLoop() {
         })
         .catch(err => console.error("Error updating HP:", err));
 
-      // Update local value immediately for instant feedback
+      // ✅ Update local value immediately so attacker sees feedback right away
       target.hp = newHp;
 
-      console.log(`${card.id} attacks ${target.id} for ${card.damage} damage`);
+      console.log(${card.id} attacks ${target.id} for ${card.damage} damage);
     }
   });
 
   requestAnimationFrame(gameLoop);
-}
+} 
 
 auth.onAuthStateChanged(async (user) => {
   if (!user) {
