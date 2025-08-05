@@ -84,31 +84,6 @@
 
     const lobbyId = localStorage.getItem("lobbyId");
     let currentUser = null;
-    let opponentUid = null;
-
-    // Function to declare winner (when opponent leaves)
-    async function declareWinner(winnerUid, loserUid, reason) {
-      try {
-        await db.collection("lobbies").doc(lobbyId).update({
-          winner: winnerUid,
-          loser: loserUid,
-          reason: reason,
-          endedAt: firebase.firestore.FieldValue.serverTimestamp(),
-          ended: true
-        });
-
-        console.log("Winner declared:", winnerUid, reason);
-      } catch (err) {
-        console.error("Error declaring winner:", err);
-      }
-    }
-
-    // Redirect to home page after battle ends
-    function redirectToHome(message) {
-      alert(message);
-      localStorage.removeItem("lobbyId");
-      window.location.href = "home.html";
-    }
 
     async function loadBattle() {
       if (!lobbyId) {
@@ -117,8 +92,10 @@
       }
 
       try {
-        const lobbySnap = await db.collection("lobbies").doc(lobbyId).get();
+        const lobbyDocRef = db.collection("lobbies").doc(lobbyId);
+        const lobbySnap = await lobbyDocRef.get();
         const lobbyData = lobbySnap.data();
+
         if (!lobbyData || lobbyData.players.length < 2) {
           document.getElementById("startText").textContent = "❌ Waiting for opponent...";
           return;
@@ -133,7 +110,6 @@
         const player2 = player2Snap.data();
 
         currentUser = auth.currentUser;
-        opponentUid = uid1 === currentUser.uid ? uid2 : uid1;
 
         // Display usernames
         document.querySelector("#player1 h2").textContent = player1.username;
@@ -165,29 +141,21 @@
 
         document.getElementById("startText").textContent = "✅ Battle Ready! (Start your game logic here)";
 
-        // Listen for lobby updates (win/lose)
-        db.collection("lobbies").doc(lobbyId).onSnapshot((doc) => {
-          const data = doc.data();
-          if (data.ended) {
-            if (data.winner === currentUser.uid) {
-              redirectToHome("🎉 You won the battle!");
-            } else if (data.loser === currentUser.uid) {
-              redirectToHome("😞 You lost the battle.");
-            } else {
-              redirectToHome("Battle ended.");
-            }
+        // Listen for lobby deletion (opponent left)
+        lobbyDocRef.onSnapshot((doc) => {
+          if (!doc.exists) {
+            alert("Opponent left the battle or lobby ended.");
+            localStorage.removeItem("lobbyId");
+            window.location.href = "home.html";
           }
         });
 
-        // Setup unload event: If user leaves, declare opponent winner immediately
+        // On unload, delete lobby to end battle for both players
         window.addEventListener("beforeunload", async (event) => {
-          // Prevent multiple triggers and check lobby exists
-          if (!lobbyId || !currentUser || !opponentUid) return;
-
           try {
-            await declareWinner(opponentUid, currentUser.uid, "Opponent left the battle");
-          } catch (e) {
-            console.error("Error on unload winner declaration:", e);
+            await lobbyDocRef.delete();
+          } catch (err) {
+            console.error("Error deleting lobby:", err);
           }
         });
 
