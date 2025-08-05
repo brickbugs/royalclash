@@ -242,19 +242,19 @@ function renderHand(deck) {
   hand.innerHTML = '';
   deck.forEach((cardId, idx) => {
     if (!cardId) {
-      console.warn(Skipping invalid cardId at index ${idx}:, cardId);
+        console.warn(`Skipping invalid cardId at index ${idx}:`, cardId);
       return;
     }
     const normalized = cardId.toLowerCase();
     const cd = cardDataCache[normalized];
     if (!cd) {
-      console.warn(Card data missing for cardId: ${cardId});
+      console.warn(`Card data missing for cardId: ${cardId}`);
       return;
     }
     const cardEl = document.createElement('div');
     cardEl.classList.add('card');
     cardEl.textContent = cd.name || cardId;
-    cardEl.title = ${cd.name}\nHP: ${cd.hitpoints}\nDamage: ${cd.damage}\nTargets: ${cd.targets.join(", ")};
+    cardEl.title = `${cd.name}\nHP: ${cd.hitpoints}\nDamage: ${cd.damage}\nTargets: ${cd.targets.join(", ")}`;
     cardEl.dataset.idx = idx;
     cardEl.addEventListener('click', () => {
       if (selectedCardIndex === idx) {
@@ -291,7 +291,7 @@ function startPlacementListener() {
           card.targetY = data.y;
           card.hp = data.hp;
           const pct = (card.hp / card.maxHp) * 100;
-          card.hpBarElement.style.width = ${pct}%;
+          card.hpBarElement.style.width = `${pct}%`;
           card.hpBarElement.style.backgroundColor = pct < 30 ? "#f00" : "#0f0";
           if (card.hp <= 0) card.domElement.style.opacity = "0.5";
         }
@@ -316,8 +316,8 @@ function renderPlacedCard(id, data) {
   el.className = 'placed-card';
   el.textContent = cd.name || data.cardId;
   el.style.position = 'absolute';
-  el.style.left = ${data.x - 30}px;
-  el.style.top = ${data.y - 40}px;
+  el.style.left = `${data.x - 30}px`;
+  el.style.top = `${data.y - 40}px`;
   el.style.zIndex = data.owner === playerSide ? 10 : 5;
   el.style.background = data.owner === "player1" ? "#2196f3cc" : "#e91e63cc";
 
@@ -326,7 +326,7 @@ function renderPlacedCard(id, data) {
   const hpBar = document.createElement('div');
   hpBar.className = 'hp-bar';
   const pct = (data.hp / data.maxHp) * 100;
-  hpBar.style.width = ${pct}%;
+  hpBar.style.width = `${pct}%`;
   hpBar.style.backgroundColor = pct < 30 ? "#f00" : "#0f0";
   hpContainer.appendChild(hpBar);
   el.appendChild(hpContainer);
@@ -417,8 +417,8 @@ function gameLoop() {
     card.y += (card.targetY - card.y) * 0.15;
 
     if (card.domElement) {
-      card.domElement.style.left = ${card.x - 30}px;
-      card.domElement.style.top = ${card.y - 40}px;
+      card.domElement.style.left = `${card.x - 30}px`;
+      card.domElement.style.top = `${card.y - 40}px`;
     }
 
     if (card.owner !== playerSide) return;
