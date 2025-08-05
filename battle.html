@@ -178,22 +178,22 @@ if (!lobbyId) {
 
 // Load card data from Firestore "cards" collection
 async function loadCardData() {
-  const cardsSnapshot = await db.collection("cards").get();
-  cardsSnapshot.forEach(doc => {
-    const data = doc.data();
-    cardDataCache[doc.id] = {
-      name: data.name || doc.id,
-      hitpoints: data.hitpoints || 100,
-      damage: data.damage || 10,
-      targets: (data.targets || "ground").split(",").map(t => t.trim()),
-      elixir: data.elixir || 1,
-      bio: data.bio || "",
-      count: data.count || 1,
-      speed: data.speed || "medium",
-      range: data.range || "melee",
-      hitspeed: data.hitspeed || 1.0
-    };
-  });
+cardsSnapshot.forEach(doc => {
+  const id = doc.id.toLowerCase();
+  const data = doc.data();
+  cardDataCache[id] = {
+    name: data.name || doc.id,
+    hitpoints: data.hitpoints || 100,
+    damage: data.damage || 10,
+    targets: (data.targets || "ground").split(",").map(t => t.trim()),
+    elixir: data.elixir || 1,
+    bio: data.bio || "",
+    count: data.count || 1,
+    speed: data.speed || "medium",
+    range: data.range || "melee",
+    hitspeed: data.hitspeed || 1.0
+  };
+});
   console.log("Card data loaded:", Object.keys(cardDataCache));
 }
 
@@ -263,11 +263,13 @@ function renderHand(deck) {
   }
 
   deck.forEach((cardId, idx) => {
-    const cardData = cardDataCache[cardId];
-    if (!cardData) {
-      console.warn(`Card data missing for cardId: ${cardId}`);
-      return;
-    }
+   const cardIdNormalized = cardId.toLowerCase();
+const cardData = cardDataCache[cardIdNormalized];
+if (!cardData) {
+  console.warn(`Card data missing for cardId: ${cardId}`);
+  return;
+}
+
 
     const cardEl = document.createElement("div");
     cardEl.className = "card";
@@ -358,11 +360,13 @@ map.addEventListener("click", (e) => {
 });
 
 function placeCardOnMap(cardId, x, y) {
-  const cardData = cardDataCache[cardId];
-  if (!cardData) {
-    console.warn("Attempted to place unknown card:", cardId);
-    return;
-  }
+const cardIdNormalized = cardId.toLowerCase();
+const cardData = cardDataCache[cardIdNormalized];
+if (!cardData) {
+  console.warn(`Card data missing for cardId: ${cardId}`);
+  return;
+}
+
 
   const cardEl = document.createElement("div");
   cardEl.className = "placed-card";
