@@ -328,6 +328,7 @@ function renderPlacedCard(id, data) {
     console.warn("Invalid cardId or missing card data for placed card", data.cardId);
     return;
   }
+
   const cardIdNormalized = data.cardId.toLowerCase();
   const cardData = cardDataCache[cardIdNormalized];
 
@@ -346,9 +347,18 @@ function renderPlacedCard(id, data) {
   const hpBar = document.createElement("div");
   hpBar.className = "hp-bar";
 
+  // ✅ Calculate HP percent and apply it
+  const hpPercent = (data.hp / data.maxHp) * 100;
+  hpBar.style.width = `${hpPercent}%`;
+  hpBar.style.backgroundColor = hpPercent < 30 ? "#f00" : "#0f0";
+
+  // ✅ If dead, fade out
+  if (data.hp <= 0) {
+    cardEl.style.opacity = "0.5";
+  }
+
   hpBarContainer.appendChild(hpBar);
   cardEl.appendChild(hpBarContainer);
-
   map.appendChild(cardEl);
 
   placedCards.push({
@@ -458,20 +468,18 @@ function distance(x1, y1, x2, y2) {
   return Math.hypot(x2 - x1, y2 - y1);
 }
 
-// Game loop: move cards & handle attacks
 let lastUpdateTime = performance.now();
+
 function gameLoop() {
   const now = performance.now();
   const deltaTime = (now - lastUpdateTime) / 1000;
   lastUpdateTime = now;
 
   placedCards.forEach(card => {
-    if (card.hp <= 0) return; // dead cards skip
+    if (card.hp <= 0) return; // Skip dead cards
 
-    // Cooldown
     card.attackCooldown = Math.max(0, card.attackCooldown - deltaTime);
 
-    // Find nearest enemy in range
     const target = placedCards.find(c =>
       c.owner !== card.owner &&
       c.hp > 0 &&
@@ -479,7 +487,7 @@ function gameLoop() {
     );
 
     if (!target) {
-      // No target in range - move towards nearest enemy (if any)
+      // No enemy in range → move toward closest enemy
       const nearestEnemy = placedCards.find(c => c.owner !== card.owner && c.hp > 0);
       if (nearestEnemy) {
         const dx = nearestEnemy.x - card.x;
@@ -501,32 +509,31 @@ function gameLoop() {
       return;
     }
 
-    // Attack if cooldown ready
+    // ✅ Attack logic and Firestore sync
     if (card.attackCooldown === 0) {
-      target.hp -= card.damage;
-      if (target.hp < 0) target.hp = 0;
-
+      const newHp = Math.max(0, target.hp - card.damage);
       card.attackCooldown = card.hitspeed;
 
-      // Update HP bar visually
-      if (target.hpBarElement) {
-        const hpPercent = (target.hp / target.maxHp) * 100;
-        target.hpBarElement.style.width = `${hpPercent}%`;
-        target.hpBarElement.style.backgroundColor = hpPercent < 30 ? "#f00" : "#0f0";
-      }
+      // 🔥 Update Firestore so both clients reflect HP changes
+      db.collection("lobbies")
+        .doc(lobbyId)
+        .collection("placements")
+        .doc(target.id)
+        .update({
+          hp: newHp
+        })
+        .catch(err => console.error("Error updating HP:", err));
 
-      // Fade out if dead
-      if (target.hp === 0 && target.domElement) {
-        target.domElement.style.opacity = "0.5";
-      }
+      // ✅ Update local value immediately so attacker sees feedback right away
+      target.hp = newHp;
 
-      // Log attack
       console.log(`${card.id} attacks ${target.id} for ${card.damage} damage`);
     }
   });
 
   requestAnimationFrame(gameLoop);
 }
+
 
 auth.onAuthStateChanged(async (user) => {
   if (!user) {
