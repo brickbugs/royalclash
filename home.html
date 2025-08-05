@@ -34,13 +34,14 @@
   <h1>Welcome to Clash Royale Clone!</h1>
 
   <div id="user-info">
-    <p id="username"></p>
-    <p id="coins"></p>
+    <p id="username">Loading username...</p>
+    <p id="coins">Loading coins...</p>
   </div>
 
   <button onclick="goToDeck()">🃏 Deck Builder</button>
   <button onclick="logout()">🚪 Logout</button>
   <button id="battleButton">⚔️ Find Battle</button>
+  <button id="cancelSearchButton" style="display:none;">✖️ Cancel Search</button>
 
   <p id="matchStatus"></p>
 
@@ -67,7 +68,25 @@
     const usernameEl = document.getElementById("username");
     const coinsEl = document.getElementById("coins");
     const battleButton = document.getElementById("battleButton");
+    const cancelSearchButton = document.getElementById("cancelSearchButton");
     const matchStatus = document.getElementById("matchStatus");
+
+    let lobbyUnsubscribe = null;
+    let matchmakingTimeout = null;
+
+    // Detect online/offline status and update UI
+    function updateOnlineStatus() {
+      if (!navigator.onLine) {
+        matchStatus.textContent = "⚠️ You are offline. Check your internet connection.";
+        battleButton.disabled = true;
+      } else {
+        matchStatus.textContent = "";
+        battleButton.disabled = false;
+      }
+    }
+    window.addEventListener('offline', updateOnlineStatus);
+    window.addEventListener('online', updateOnlineStatus);
+    updateOnlineStatus();
 
     auth.onAuthStateChanged(async (user) => {
       if (!user) {
@@ -75,20 +94,31 @@
         return;
       }
 
+      usernameEl.textContent = "Loading username...";
+      coinsEl.textContent = "Loading coins...";
+
       try {
         const doc = await db.collection("players").doc(user.uid).get();
         const data = doc.data();
 
-        usernameEl.textContent = 👤 Username: ${data.username};
-        coinsEl.textContent = 💰 Coins: ${data.coins ?? 0};
+        if (!data) {
+          usernameEl.textContent = "⚠️ No user data found";
+          coinsEl.textContent = "";
+          return;
+        }
+
+        usernameEl.textContent = `👤 Username: ${data.username}`;
+        coinsEl.textContent = `💰 Coins: ${data.coins ?? 0}`;
 
         // Optional: Initialize coins if not set
         if (data.coins === undefined) {
           await db.collection("players").doc(user.uid).update({ coins: 100 });
-          coinsEl.textContent = 💰 Coins: 100;
+          coinsEl.textContent = "💰 Coins: 100";
         }
       } catch (error) {
         console.error("Error fetching user data:", error);
+        usernameEl.textContent = "⚠️ Unable to load username";
+        coinsEl.textContent = "";
       }
     });
 
@@ -102,13 +132,28 @@
       window.location.href = "deck.html";
     }
 
+    cancelSearchButton.onclick = () => {
+      if (lobbyUnsubscribe) {
+        lobbyUnsubscribe();
+        lobbyUnsubscribe = null;
+      }
+      if (matchmakingTimeout) {
+        clearTimeout(matchmakingTimeout);
+        matchmakingTimeout = null;
+      }
+      matchStatus.textContent = "❌ Matchmaking cancelled.";
+      battleButton.disabled = false;
+      cancelSearchButton.style.display = "none";
+    };
+
     battleButton.addEventListener("click", async () => {
       battleButton.disabled = true;
+      cancelSearchButton.style.display = "inline-block";
       matchStatus.textContent = "🔍 Searching for an opponent...";
 
       try {
         const user = auth.currentUser;
-        if (!user) return;
+        if (!user) throw new Error("User not logged in");
 
         const lobbiesRef = db.collection("lobbies");
 
@@ -124,6 +169,7 @@
           const lobbyDoc = openLobbySnapshot.docs[0];
           const data = lobbyDoc.data();
 
+          // Only join if lobby has 1 player and not yourself
           if (data.players.length === 1 && data.players[0] !== user.uid) {
             await lobbyDoc.ref.update({
               players: [...data.players, user.uid],
@@ -146,20 +192,42 @@
         localStorage.setItem("lobbyId", lobbyId); // For battle.html
 
         // Step 2: Listen for the lobby to be ready
-        const unsubscribe = lobbiesRef.doc(lobbyId).onSnapshot((doc) => {
+        lobbyUnsubscribe = lobbiesRef.doc(lobbyId).onSnapshot((doc) => {
           const lobbyData = doc.data();
           if (lobbyData && lobbyData.ready && lobbyData.players.length === 2) {
-            unsubscribe();
+            if (lobbyUnsubscribe) {
+              lobbyUnsubscribe();
+              lobbyUnsubscribe = null;
+            }
+            if (matchmakingTimeout) {
+              clearTimeout(matchmakingTimeout);
+              matchmakingTimeout = null;
+            }
             matchStatus.textContent = "✅ Match found! Starting battle...";
+            cancelSearchButton.style.display = "none";
             setTimeout(() => {
               window.location.href = "battle.html";
             }, 1000);
           }
         });
+
+        // Add a timeout to cancel matchmaking after 30 seconds
+        matchmakingTimeout = setTimeout(() => {
+          if (lobbyUnsubscribe) {
+            lobbyUnsubscribe();
+            lobbyUnsubscribe = null;
+          }
+          matchStatus.textContent = "❌ No opponents found. Please try again.";
+          battleButton.disabled = false;
+          cancelSearchButton.style.display = "none";
+          matchmakingTimeout = null;
+        }, 30000); // 30 seconds
+
       } catch (err) {
         console.error("Matchmaking error:", err);
         matchStatus.textContent = "❌ Failed to find battle. Try again.";
         battleButton.disabled = false;
+        cancelSearchButton.style.display = "none";
       }
     });
   </script>
