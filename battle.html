@@ -310,24 +310,31 @@ function startPlacementListener() {
           if (!cardMap.has(id)) {
             const card = renderPlacedCard(id, data);
             cardMap.set(id, card);
-            placedCards.push(card);
+            // placedCards.push(card); <-- Removed to prevent duplicates
           }
         } else if (change.type === "modified") {
           const card = cardMap.get(id);
           if (card) {
-            // Update target position, not instant position
+            // Update target position (for lerp)
             card.targetX = data.x;
             card.targetY = data.y;
             card.hp = data.hp;
 
-            // Update HP bar
+            // Update HP bar visually
             const hpPercent = (card.hp / card.maxHp) * 100;
             card.hpBarElement.style.width = `${hpPercent}%`;
             card.hpBarElement.style.backgroundColor = hpPercent < 30 ? "#f00" : "#0f0";
 
-            // Fade if dead
             if (card.hp <= 0) {
               card.domElement.style.opacity = "0.5";
+
+              // Delete dead card from Firestore (once)
+              db.collection("lobbies")
+                .doc(lobbyId)
+                .collection("placements")
+                .doc(id)
+                .delete()
+                .catch(err => console.error("Error deleting dead card:", err));
             }
           }
         } else if (change.type === "removed") {
@@ -341,8 +348,6 @@ function startPlacementListener() {
       });
     });
 }
-
-
 function renderPlacedCard(id, data) {
   if (!data.cardId || !cardDataCache[data.cardId.toLowerCase()]) {
     console.warn("Invalid cardId or missing card data for placed card", data.cardId);
@@ -367,12 +372,12 @@ function renderPlacedCard(id, data) {
   const hpBar = document.createElement("div");
   hpBar.className = "hp-bar";
 
-  // ✅ Calculate HP percent and apply it
+  // Calculate HP percent and apply it
   const hpPercent = (data.hp / data.maxHp) * 100;
   hpBar.style.width = `${hpPercent}%`;
   hpBar.style.backgroundColor = hpPercent < 30 ? "#f00" : "#0f0";
 
-  // ✅ If dead, fade out
+  // If dead, fade out
   if (data.hp <= 0) {
     cardEl.style.opacity = "0.5";
   }
@@ -381,7 +386,7 @@ function renderPlacedCard(id, data) {
   cardEl.appendChild(hpBarContainer);
   map.appendChild(cardEl);
 
-  placedCards.push({
+  const cardObj = {
     id,
     owner: data.owner,
     x: data.x,
@@ -396,9 +401,13 @@ function renderPlacedCard(id, data) {
     attackCooldown: 0,
     domElement: cardEl,
     hpBarElement: hpBar,
-  });
-}
+    targetX: data.x,   // Initialize target positions for smooth lerp
+    targetY: data.y,
+  };
 
+  placedCards.push(cardObj);
+  return cardObj;
+}
 // Parse speed and range helper
 function parseSpeed(speedStr) {
   switch ((speedStr || "").toLowerCase()) {
@@ -495,59 +504,72 @@ function gameLoop() {
   const deltaTime = (now - lastUpdateTime) / 1000;
   lastUpdateTime = now;
 
-placedCards.forEach(card => {
-  if (!card || typeof card.hp !== 'number') return;
-  if (card.hp <= 0) return;
+  const lerpFactor = 0.15; // smooth lerp for position
 
-  card.attackCooldown = Math.max(0, card.attackCooldown - deltaTime);
+  placedCards.forEach(card => {
+    if (!card || typeof card.hp !== 'number') return;
+    if (card.hp <= 0) return;
 
-  const target = placedCards.find(c =>
-    c &&
-    c.owner !== card.owner &&
-    c.hp > 0 &&
-    distance(card.x, card.y, c.x, c.y) <= card.range
-  );
+    // Smoothly move towards target position (from Firestore updates)
+    if (card.targetX !== undefined && card.targetY !== undefined) {
+      card.x += (card.targetX - card.x) * lerpFactor;
+      card.y += (card.targetY - card.y) * lerpFactor;
 
-  if (!target) {
-    const nearestEnemy = placedCards.find(c => c && c.owner !== card.owner && c.hp > 0);
-    if (nearestEnemy) {
-      const dx = nearestEnemy.x - card.x;
-      const dy = nearestEnemy.y - card.y;
-      const dist = Math.hypot(dx, dy);
-
-      if (dist > card.range) {
-        const angle = Math.atan2(dy, dx);
-        const moveDist = Math.min(card.speed * deltaTime, dist - card.range);
-        card.x += Math.cos(angle) * moveDist;
-        card.y += Math.sin(angle) * moveDist;
-
-        if (card.domElement) {
-          card.domElement.style.left = `${card.x - 30}px`;
-          card.domElement.style.top = `${card.y - 40}px`;
-        }
+      if (card.domElement) {
+        card.domElement.style.left = `${card.x - 30}px`;
+        card.domElement.style.top = `${card.y - 40}px`;
       }
     }
-    return;
-  }
 
-  if (card.attackCooldown === 0) {
-    const newHp = Math.max(0, target.hp - card.damage);
-    card.attackCooldown = card.hitspeed;
+    card.attackCooldown = Math.max(0, card.attackCooldown - deltaTime);
 
-    db.collection("lobbies")
-      .doc(lobbyId)
-      .collection("placements")
-      .doc(target.id)
-      .update({
-        hp: newHp
-      })
-      .catch(err => console.error("Error updating HP:", err));
+    const target = placedCards.find(c =>
+      c &&
+      c.owner !== card.owner &&
+      c.hp > 0 &&
+      distance(card.x, card.y, c.x, c.y) <= card.range
+    );
 
-    target.hp = newHp;
+    if (!target) {
+      const nearestEnemy = placedCards.find(c => c && c.owner !== card.owner && c.hp > 0);
+      if (nearestEnemy) {
+        const dx = nearestEnemy.x - card.x;
+        const dy = nearestEnemy.y - card.y;
+        const dist = Math.hypot(dx, dy);
 
-    console.log(`${card.id} attacks ${target.id} for ${card.damage} damage`);
-  }
-});
+        if (dist > card.range) {
+          const angle = Math.atan2(dy, dx);
+          const moveDist = Math.min(card.speed * deltaTime, dist - card.range);
+          card.x += Math.cos(angle) * moveDist;
+          card.y += Math.sin(angle) * moveDist;
+
+          if (card.domElement) {
+            card.domElement.style.left = `${card.x - 30}px`;
+            card.domElement.style.top = `${card.y - 40}px`;
+          }
+        }
+      }
+      return;
+    }
+
+    if (card.attackCooldown === 0) {
+      const newHp = Math.max(0, target.hp - card.damage);
+      card.attackCooldown = card.hitspeed;
+
+      db.collection("lobbies")
+        .doc(lobbyId)
+        .collection("placements")
+        .doc(target.id)
+        .update({
+          hp: newHp
+        })
+        .catch(err => console.error("Error updating HP:", err));
+
+      // DO NOT update target.hp here — Firestore listener updates it!
+      // target.hp = newHp;  <-- Removed
+      console.log(`${card.id} attacks ${target.id} for ${card.damage} damage`);
+    }
+  });
 
   requestAnimationFrame(gameLoop);
 }
