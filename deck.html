@@ -3,6 +3,7 @@
 <head>
   <title>Deck Builder</title>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -10,9 +11,19 @@
       padding: 20px;
       text-align: center;
       position: relative;
+      margin: 0;
+      min-height: 100vh;
+      box-sizing: border-box;
     }
     h1 {
       margin-bottom: 10px;
+      font-size: 1.6rem;
+    }
+    p {
+      font-size: 1rem;
+      max-width: 400px;
+      margin-left: auto;
+      margin-right: auto;
     }
     .card-container, .deck-container {
       display: flex;
@@ -25,6 +36,8 @@
       padding: 10px;
       background-color: white;
       user-select: none;
+      max-width: 100%;
+      box-sizing: border-box;
     }
     .card, .deck-slot {
       width: 100px;
@@ -44,10 +57,18 @@
       position: relative;
       border-radius: 8px;
       box-shadow: 0 2px 5px rgba(0,0,0,0.15);
+      touch-action: manipulation;
     }
     .deck-slot {
       border-style: solid;
       background-color: #fdfdfd;
+      cursor: pointer;
+      /* For highlighting selected slot */
+      transition: box-shadow 0.25s ease;
+    }
+    .deck-slot.selected {
+      box-shadow: 0 0 12px 3px #1976d2;
+      border-color: #1976d2;
     }
     .card-name {
       font-size: 16px;
@@ -88,6 +109,7 @@
       padding: 10px 20px;
       font-size: 16px;
       cursor: pointer;
+      user-select: none;
     }
     #notification {
       position: fixed;
@@ -127,6 +149,7 @@
       font-size: 12px;
       cursor: pointer;
       z-index: 10;
+      user-select: none;
     }
 
     /* Popup styling */
@@ -144,6 +167,7 @@
       width: 320px;
       display: none;
       text-align: left;
+      user-select: none;
     }
     #popup-content h3 {
       margin-bottom: 10px;
@@ -164,12 +188,48 @@
       display: block;
       margin-left: auto;
       margin-right: auto;
+      user-select: none;
+    }
+
+    /* Responsive adjustments */
+    @media (max-width: 480px) {
+      .card, .deck-slot {
+        width: 70px;
+        height: 100px;
+        padding: 4px;
+      }
+      .card-name {
+        font-size: 12px;
+      }
+      .card-elixir {
+        width: 22px;
+        height: 22px;
+        font-size: 12px;
+        top: 4px;
+        left: 4px;
+      }
+      .card-icon {
+        width: 44px;
+        height: 44px;
+      }
+      button {
+        font-size: 14px;
+        padding: 8px 16px;
+      }
+      h1 {
+        font-size: 1.3rem;
+      }
+      p {
+        font-size: 0.9rem;
+        max-width: 320px;
+      }
     }
   </style>
 </head>
 <body>
   <h1>Deck Builder</h1>
-  <p>Drag cards into the deck slots below (Max 6, no duplicates). You can also drag cards out of your deck back here.</p>
+  <p>Drag cards into the deck slots below (Max 6, no duplicates). You can also drag cards out of your deck back here.<br>
+  Or <strong>tap/click a card, then tap/click a deck slot</strong> to place it.</p>
 
   <div class="card-container" id="cardContainer"></div>
   <h2>Your Deck</h2>
@@ -223,6 +283,9 @@
     const cardContainer = document.getElementById("cardContainer");
     const deckContainer = document.getElementById("deckContainer");
     const notification = document.getElementById("notification");
+
+    // State for click-to-place mode
+    let selectedCardName = null;
 
     auth.onAuthStateChanged(async (user) => {
       if (!user) {
@@ -287,6 +350,7 @@
         }
       });
 
+      // Drag & drop for card container
       cardContainer.ondragover = e => e.preventDefault();
       cardContainer.ondrop = e => {
         e.preventDefault();
@@ -294,6 +358,7 @@
         if (!cardName) return;
 
         removeCardFromDeck(cardName);
+        clearSelection();
         renderCards();
         saveDeck();
       };
@@ -344,9 +409,43 @@
             newCard.style.transform = "scale(1)";
           }, 300);
 
+          clearSelection();
           renderCards();
           saveDeck();
         };
+
+        // Click to place selected card logic
+        slot.addEventListener("click", () => {
+          if (selectedCardName) {
+            if (isCardInDeck(selectedCardName)) {
+              showNotification("You already have this card in your deck!");
+              clearSelection();
+              return;
+            }
+
+            const existing = slot.querySelector(".card");
+            if (existing) existing.remove();
+
+            const cardObj = cardList.find(c => c.name === selectedCardName);
+            if (!cardObj) {
+              showNotification("Card not found.");
+              clearSelection();
+              return;
+            }
+
+            const newCard = createCard(cardObj);
+            slot.appendChild(newCard);
+
+            newCard.style.transform = "scale(1.2)";
+            setTimeout(() => {
+              newCard.style.transform = "scale(1)";
+            }, 300);
+
+            clearSelection();
+            renderCards();
+            saveDeck();
+          }
+        });
 
         deckContainer.appendChild(slot);
       }
@@ -410,13 +509,48 @@
       // Show info button on card click, hide others
       div.addEventListener("click", (e) => {
         e.stopPropagation();
-        // Hide all other info buttons
+
+        // If this card is already selected for click-to-place, deselect it
+        if (selectedCardName === card.name) {
+          clearSelection();
+          return;
+        }
+
+        // Select this card for click-to-place
+        selectedCardName = card.name;
+
+        // Visual feedback: highlight selected card
+        document.querySelectorAll(".card").forEach(c => {
+          c.style.borderColor = c.dataset.name === selectedCardName ? "#1976d2" : "#aaa";
+          c.style.boxShadow = c.dataset.name === selectedCardName ? "0 0 10px 3px #1976d2" : "0 2px 5px rgba(0,0,0,0.15)";
+        });
+
+        // Show info button only on selected card
         document.querySelectorAll(".info-button").forEach(btn => btn.style.display = "none");
-        // Show this card's info button
         infoBtn.style.display = "block";
+
+        // Highlight deck slots to indicate they are clickable
+        deckContainer.querySelectorAll(".deck-slot").forEach(slot => {
+          slot.classList.add("selected");
+        });
       });
 
       return div;
+    }
+
+    function clearSelection() {
+      selectedCardName = null;
+      // Remove highlights from cards
+      document.querySelectorAll(".card").forEach(c => {
+        c.style.borderColor = "#aaa";
+        c.style.boxShadow = "0 2px 5px rgba(0,0,0,0.15)";
+      });
+      // Hide all info buttons
+      document.querySelectorAll(".info-button").forEach(btn => btn.style.display = "none");
+      // Remove highlights from deck slots
+      deckContainer.querySelectorAll(".deck-slot").forEach(slot => {
+        slot.classList.remove("selected");
+      });
     }
 
     async function showCardInfo(cardName) {
@@ -451,9 +585,17 @@
       document.getElementById("card-info-popup").style.display = "none";
     }
 
-    // Hide info buttons if clicking outside cards
-    document.addEventListener("click", () => {
-      document.querySelectorAll(".info-button").forEach(btn => btn.style.display = "none");
+    // Hide info buttons and clear selection if clicking outside cards or slots
+    document.addEventListener("click", (e) => {
+      // If click is NOT on a card or deck slot or info button, clear selection and hide info buttons
+      if (
+        !e.target.closest(".card") &&
+        !e.target.closest(".deck-slot") &&
+        !e.target.closest(".info-button") &&
+        !e.target.closest("#card-info-popup")
+      ) {
+        clearSelection();
+      }
     });
 
     function saveDeck() {
