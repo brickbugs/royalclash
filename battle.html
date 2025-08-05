@@ -293,35 +293,64 @@ function updateHandSelection() {
   });
 }
 
-// Firestore placements listener - listens for all placed cards by any player
 function startPlacementListener() {
-  // Clear existing placed cards on map and in memory
-  placedCards.forEach(p => {
-    if (p.domElement && p.domElement.parentElement) {
-      p.domElement.parentElement.removeChild(p.domElement);
-    }
-  });
-  placedCards = [];
+  const cardMap = new Map(); // Map of cardId -> placedCard object
 
   db.collection("lobbies")
     .doc(lobbyId)
     .collection("placements")
     .orderBy("createdAt")
     .onSnapshot(snapshot => {
-      // Clear placed cards on map for fresh rendering
-      placedCards.forEach(p => {
-        if (p.domElement && p.domElement.parentElement) {
-          p.domElement.parentElement.removeChild(p.domElement);
-        }
-      });
-      placedCards = [];
-
-      snapshot.forEach(doc => {
+      snapshot.docChanges().forEach(change => {
+        const doc = change.doc;
         const data = doc.data();
-        renderPlacedCard(doc.id, data);
+        const id = doc.id;
+
+        if (change.type === "added") {
+          // Only add if it doesn't exist
+          if (!cardMap.has(id)) {
+            const card = renderPlacedCard(id, data);
+            cardMap.set(id, card);
+            placedCards.push(card);
+          }
+        } else if (change.type === "modified") {
+          // Update existing card state
+          const card = cardMap.get(id);
+          if (card) {
+            card.hp = data.hp;
+            card.x = data.x;
+            card.y = data.y;
+
+            // Update position
+            if (card.domElement) {
+              card.domElement.style.left = `${card.x - 30}px`;
+              card.domElement.style.top = `${card.y - 40}px`;
+            }
+
+            // Update HP bar
+            if (card.hpBarElement) {
+              const hpPercent = (card.hp / card.maxHp) * 100;
+              card.hpBarElement.style.width = `${hpPercent}%`;
+              card.hpBarElement.style.backgroundColor = hpPercent < 30 ? "#f00" : "#0f0";
+            }
+
+            // Fade if dead
+            if (card.hp <= 0 && card.domElement) {
+              card.domElement.style.opacity = "0.5";
+            }
+          }
+        } else if (change.type === "removed") {
+          const card = cardMap.get(id);
+          if (card && card.domElement && card.domElement.parentElement) {
+            card.domElement.remove();
+          }
+          cardMap.delete(id);
+          placedCards = placedCards.filter(p => p.id !== id);
+        }
       });
     });
 }
+
 
 function renderPlacedCard(id, data) {
   if (!data.cardId || !cardDataCache[data.cardId.toLowerCase()]) {
@@ -361,7 +390,7 @@ function renderPlacedCard(id, data) {
   cardEl.appendChild(hpBarContainer);
   map.appendChild(cardEl);
 
-  placedCards.push({
+  return {
     id,
     owner: data.owner,
     x: data.x,
@@ -376,7 +405,7 @@ function renderPlacedCard(id, data) {
     attackCooldown: 0,
     domElement: cardEl,
     hpBarElement: hpBar,
-  });
+  };
 }
 
 // Parse speed and range helper
