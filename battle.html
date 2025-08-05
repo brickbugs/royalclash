@@ -486,7 +486,7 @@ map.addEventListener("click", async (e) => {
 function distance(x1, y1, x2, y2) {
   return Math.hypot(x2 - x1, y2 - y1);
 }
-
+   
 let lastUpdateTime = performance.now();
 
 function gameLoop() {
@@ -494,26 +494,25 @@ function gameLoop() {
   const deltaTime = (now - lastUpdateTime) / 1000;
   lastUpdateTime = now;
 
-  const lerpFactor = 0.15; // Smooth lerp for movement
+  const lerpFactor = 0.15;
 
   placedCards.forEach(card => {
-    if (!card || typeof card.hp !== 'number') return;
-    if (card.hp <= 0) return;
+    if (!card || typeof card.hp !== 'number' || card.hp <= 0) return;
 
-    // Smooth movement toward latest Firestore position
-    if (card.targetX !== undefined && card.targetY !== undefined) {
-      card.x += (card.targetX - card.x) * lerpFactor;
-      card.y += (card.targetY - card.y) * lerpFactor;
+    // Smooth interpolation toward Firestore position
+    card.x += (card.targetX - card.x) * lerpFactor;
+    card.y += (card.targetY - card.y) * lerpFactor;
 
-      if (card.domElement) {
-        card.domElement.style.left = `${card.x - 30}px`;
-        card.domElement.style.top = `${card.y - 40}px`;
-      }
+    if (card.domElement) {
+      card.domElement.style.left = `${card.x - 30}px`;
+      card.domElement.style.top = `${card.y - 40}px`;
     }
+
+    if (card.owner !== playerSide) return; // Only control your own cards
 
     card.attackCooldown = Math.max(0, card.attackCooldown - deltaTime);
 
-    // Find attack target in range
+    // Find target in range
     const target = placedCards.find(c =>
       c &&
       c.owner !== card.owner &&
@@ -522,7 +521,7 @@ function gameLoop() {
     );
 
     if (!target) {
-      // Move toward nearest enemy if no target in range
+      // Move toward nearest enemy
       const nearestEnemy = placedCards.find(c => c && c.owner !== card.owner && c.hp > 0);
       if (nearestEnemy) {
         const dx = nearestEnemy.x - card.x;
@@ -535,21 +534,28 @@ function gameLoop() {
           card.x += Math.cos(angle) * moveDist;
           card.y += Math.sin(angle) * moveDist;
 
-          if (card.domElement) {
-            card.domElement.style.left = `${card.x - 30}px`;
-            card.domElement.style.top = `${card.y - 40}px`;
-          }
+          card.targetX = card.x;
+          card.targetY = card.y;
+
+          // Sync movement to Firestore
+          db.collection("lobbies")
+            .doc(lobbyId)
+            .collection("placements")
+            .doc(card.id)
+            .update({
+              x: card.x,
+              y: card.y,
+            }).catch(err => console.error("Movement update failed:", err));
         }
       }
       return;
     }
 
-    // Attack if cooldown ready
-    if (card.attackCooldown === 0) {
+    // Attack
+    if (card.attackCooldown <= 0) {
       const newHp = Math.max(0, target.hp - card.damage);
       card.attackCooldown = card.hitspeed;
 
-      // Update Firestore hp to sync with all clients
       db.collection("lobbies")
         .doc(lobbyId)
         .collection("placements")
@@ -557,13 +563,13 @@ function gameLoop() {
         .update({ hp: newHp })
         .catch(err => console.error("Error updating HP:", err));
 
-      // Don't update target.hp locally — Firestore listener updates it
       console.log(`${card.id} attacks ${target.id} for ${card.damage} damage`);
     }
   });
 
   requestAnimationFrame(gameLoop);
 }
+
 
 auth.onAuthStateChanged(async (user) => {
   if (!user) {
