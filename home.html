@@ -181,7 +181,7 @@ battleButton.addEventListener("click", async () => {
     }
 
     if (!lobbyId) {
-      // Create new lobby
+      // Create a new lobby
       const newLobby = await lobbiesRef.add({
         players: [user.uid],
         ready: false,
@@ -192,7 +192,7 @@ battleButton.addEventListener("click", async () => {
 
     localStorage.setItem("lobbyId", lobbyId);
 
-    // ✅ BOTH players listen for readiness
+    // Step 2: Listen for the lobby to be ready
     lobbyUnsubscribe = lobbiesRef.doc(lobbyId).onSnapshot((doc) => {
       const lobbyData = doc.data();
       if (lobbyData && lobbyData.ready && lobbyData.players.length === 2) {
@@ -213,7 +213,7 @@ battleButton.addEventListener("click", async () => {
       }
     });
 
-    // Cancel if no match after 30 seconds
+    // Step 3: Timeout fallback
     matchmakingTimeout = setTimeout(() => {
       if (lobbyUnsubscribe) {
         lobbyUnsubscribe();
@@ -232,45 +232,7 @@ battleButton.addEventListener("click", async () => {
     cancelSearchButton.style.display = "none";
   }
 });
-        // Step 2: Listen for the lobby to be ready
-        lobbyUnsubscribe = lobbiesRef.doc(lobbyId).onSnapshot((doc) => {
-          const lobbyData = doc.data();
-          if (lobbyData && lobbyData.ready && lobbyData.players.length === 2) {
-            if (lobbyUnsubscribe) {
-              lobbyUnsubscribe();
-              lobbyUnsubscribe = null;
-            }
-            if (matchmakingTimeout) {
-              clearTimeout(matchmakingTimeout);
-              matchmakingTimeout = null;
-            }
-            matchStatus.textContent = "✅ Match found! Starting battle...";
-            cancelSearchButton.style.display = "none";
-            setTimeout(() => {
-              window.location.href = "battle.html";
-            }, 1000);
-          }
-        });
 
-        // Add a timeout to cancel matchmaking after 30 seconds
-        matchmakingTimeout = setTimeout(() => {
-          if (lobbyUnsubscribe) {
-            lobbyUnsubscribe();
-            lobbyUnsubscribe = null;
-          }
-          matchStatus.textContent = "❌ No opponents found. Please try again.";
-          battleButton.disabled = false;
-          cancelSearchButton.style.display = "none";
-          matchmakingTimeout = null;
-        }, 30000); // 30 seconds
-
-      } catch (err) {
-        console.error("Matchmaking error:", err);
-        matchStatus.textContent = "❌ Failed to find battle. Try again.";
-        battleButton.disabled = false;
-        cancelSearchButton.style.display = "none";
-      }
-    });
   </script>
 </body>
 </html>
