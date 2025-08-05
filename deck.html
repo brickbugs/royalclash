@@ -287,35 +287,52 @@
     // State for click-to-place mode
     let selectedCardName = null;
 
-    auth.onAuthStateChanged(async (user) => {
-      if (!user) {
-        window.location.href = "index.html";
-        return;
-      }
-      currentUser = user;
+   auth.onAuthStateChanged(async (user) => {
+  if (!user) {
+    window.location.href = "index.html";
+    return;
+  }
+  currentUser = user;
 
-      await loadCards();
-      renderDeckSlots();
+  await loadCards();
+  renderDeckSlots();
 
-      const doc = await db.collection("players").doc(user.uid).get();
-      const data = doc.data() || {};
-      const savedDeck = data.deck || [];
+  const playerRef = db.collection("players").doc(user.uid);
+  const playerDoc = await playerRef.get();
+  const playerData = playerDoc.data() || {};
 
-      for (let i = 0; i < savedDeck.length; i++) {
-        const cardName = savedDeck[i];
-        const slot = deckContainer.children[i];
+  const savedDeck = playerData.deck || [];
+  const ownedCards = new Set(playerData.cards || []);
 
-        if (cardName) {
-          const cardObj = cardList.find(c => c.name === cardName);
-          if (cardObj) {
-            const cardEl = createCard(cardObj);
-            slot.appendChild(cardEl);
-          }
-        }
-      }
+  // Find any new cards the player doesn't own yet
+  const newCards = cardList
+    .map(card => card.name)
+    .filter(name => !ownedCards.has(name));
 
-      renderCards();
+  // If any new cards were found, add them to the user's inventory
+  if (newCards.length > 0) {
+    newCards.forEach(name => ownedCards.add(name));
+    await playerRef.update({
+      cards: Array.from(ownedCards)
     });
+  }
+
+  // Load current deck cards
+  for (let i = 0; i < savedDeck.length; i++) {
+    const cardName = savedDeck[i];
+    const slot = deckContainer.children[i];
+
+    if (cardName) {
+      const cardObj = cardList.find(c => c.name === cardName);
+      if (cardObj) {
+        const cardEl = createCard(cardObj);
+        slot.appendChild(cardEl);
+      }
+    }
+  }
+
+  renderCards();
+});
 
     async function loadCards() {
       try {
