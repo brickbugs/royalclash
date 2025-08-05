@@ -495,7 +495,8 @@ function gameLoop() {
   const deltaTime = (now - lastUpdateTime) / 1000;
   lastUpdateTime = now;
 
-  placedCards.forEach(card => {
+placedCards.forEach(card => {
+  if (!card || typeof card.hp !== 'number') return;
   if (card.hp <= 0) return;
 
   card.attackCooldown = Math.max(0, card.attackCooldown - deltaTime);
