@@ -137,358 +137,352 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 
  <script>
-  // --- Firebase config and initialization (replace with your config) ---
-  const firebaseConfig = {
-    apiKey: "AIzaSyADqsChcYfhT_bAlQ1VWkrlga-oTJViz7U",
-    authDomain: "clashroyaleclone-ae764.firebaseapp.com",
-    projectId: "clashroyaleclone-ae764",
-    storageBucket: "clashroyaleclone-ae764.appspot.com",
-    messagingSenderId: "938364278081",
-    appId: "1:938364278081:web:1c214bd66caef6d7567dc0",
-    measurementId: "G-PT2GPP0JF5"
-  };
+// Firebase config and initialization
+const firebaseConfig = {
+  apiKey: "AIzaSyADqsChcYfhT_bAlQ1VWkrlga-oTJViz7U",
+  authDomain: "clashroyaleclone-ae764.firebaseapp.com",
+  projectId: "clashroyaleclone-ae764",
+  storageBucket: "clashroyaleclone-ae764.appspot.com",
+  messagingSenderId: "938364278081",
+  appId: "1:938364278081:web:1c214bd66caef6d7567dc0",
+  measurementId: "G-PT2GPP0JF5"
+};
 
-  firebase.initializeApp(firebaseConfig);
-  const db = firebase.firestore();
-  const auth = firebase.auth();
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
 
-  // Get lobbyId from URL query (example)
-  const urlParams = new URLSearchParams(window.location.search);
-  const lobbyId = urlParams.get('lobbyId');
+// Grab DOM elements
+const hand = document.getElementById('hand');
+const map = document.getElementById('map');
+const player1NameEl = document.getElementById('player1Name');
+const player2NameEl = document.getElementById('player2Name');
+const startText = document.getElementById('startText');
 
-  // DOM elements (make sure these exist in your HTML)
-  const startText = document.getElementById("startText");
-  const player1NameEl = document.getElementById("player1Name");
-  const player2NameEl = document.getElementById("player2Name");
-  const hand = document.getElementById("hand");
-  const map = document.getElementById("map");
+let currentUser = null;
+let playerSide = null;
+let enemySide = null;
+let playerDeck = [];
+let enemyDeck = [];
+let selectedCardIndex = null;
+let selectedCardData = null;
+let placedCards = [];
+const cardDataCache = {};
 
-  // Game variables
-  let currentUser = null;
-  let playerSide = null;
-  let enemySide = null;
-  let playerDeck = [];
-  let enemyDeck = [];
-  let selectedCardIndex = null;
-  let selectedCardData = null;
-  let placedCards = [];
-  let cardDataCache = {};
+// Get lobbyId from localStorage and check early
+const lobbyId = localStorage.getItem("lobbyId");
+if (!lobbyId) {
+  alert("Lobby ID not found! Redirecting to home.");
+  window.location.href = "home.html";
+  throw new Error("Lobby ID not found, redirecting.");
+}
 
-  // --- Load all card data from Firestore ---
-  async function loadCardData() {
-    const cardsSnapshot = await db.collection("cards").get();
-    cardsSnapshot.forEach(doc => {
-      const data = doc.data();
-      cardDataCache[doc.id] = {
-        name: data.name || doc.id,
-        hitpoints: data.hitpoints || 100,
-        damage: data.damage || 10,
-        targets: (data.targets || "ground").split(",").map(t => t.trim()),
-        elixir: data.elixir || 1,
-        bio: data.bio || "",
-        count: data.count || 1,
-        speed: data.speed || "medium",
-        range: data.range || "melee",
-        hitspeed: data.hitspeed || 1.0
-      };
-    });
-  }
-
-  // --- Load battle data including decks and players ---
-  async function loadBattle() {
-    if (!lobbyId) {
-      startText.textContent = "❌ Lobby ID not found.";
-      return;
-    }
-
-    try {
-      const lobbySnap = await db.collection("lobbies").doc(lobbyId).get();
-      const lobbyData = lobbySnap.data();
-      if (!lobbyData || lobbyData.players.length < 2) {
-        startText.textContent = "❌ Waiting for opponent...";
-        return;
-      }
-
-      const [uid1, uid2] = lobbyData.players;
-
-      const [player1Snap, player2Snap] = await Promise.all([
-        db.collection("players").doc(uid1).get(),
-        db.collection("players").doc(uid2).get(),
-      ]);
-
-      const player1 = player1Snap.data();
-      const player2 = player2Snap.data();
-
-      player1NameEl.textContent = player1.username || "Player 1";
-      player2NameEl.textContent = player2.username || "Player 2";
-
-      if (currentUser.uid === uid1) {
-        playerSide = "player1";
-        enemySide = "player2";
-        playerDeck = Array.isArray(player1.deck) ? [...player1.deck] : [];
-        enemyDeck = Array.isArray(player2.deck) ? [...player2.deck] : [];
-      } else if (currentUser.uid === uid2) {
-        playerSide = "player2";
-        enemySide = "player1";
-        playerDeck = Array.isArray(player2.deck) ? [...player2.deck] : [];
-        enemyDeck = Array.isArray(player1.deck) ? [...player1.deck] : [];
-      } else {
-        alert("You are not in this battle.");
-        window.location.href = "home.html";
-        return;
-      }
-
-      await loadCardData();
-
-      renderHand(playerDeck);
-      renderTowers();
-      // Optionally render enemy hand or skip
-
-      startText.textContent = "✅ Battle Ready! Select a card and place it on your side.";
-
-    } catch (err) {
-      console.error(err);
-      startText.textContent = "❌ Error loading battle.";
-    }
-  }
-
-  // --- Render your hand cards ---
-  function renderHand(deck) {
-    hand.innerHTML = '';
-    deck.forEach((cardId, idx) => {
-      const cardData = cardDataCache[cardId];
-      if (!cardData) return;
-      const cardEl = document.createElement('div');
-      cardEl.classList.add('card');
-      cardEl.textContent = cardData.name || cardId;
-      cardEl.title = `${cardData.name}\nHP: ${cardData.hitpoints}\nDamage: ${cardData.damage}\nTargets: ${cardData.targets.join(", ")}`;
-      cardEl.dataset.idx = idx;
-      cardEl.addEventListener('click', () => {
-        if (selectedCardIndex === idx) {
-          selectedCardIndex = null;
-          selectedCardData = null;
-        } else {
-          selectedCardIndex = idx;
-          selectedCardData = cardData;
-        }
-        updateHandSelection();
-      });
-      hand.appendChild(cardEl);
-    });
-    updateHandSelection();
-  }
-
-  // --- Update which card is visually selected ---
-  function updateHandSelection() {
-    const cards = hand.querySelectorAll('.card');
-    cards.forEach((c, i) => {
-      c.classList.toggle('selected', i === selectedCardIndex);
-    });
-  }
-
-  // --- Handle clicks on the map to place cards ---
-  map.addEventListener("click", e => {
-    if (selectedCardIndex === null || !selectedCardData) {
-      startText.textContent = "Select a card first!";
-      return;
-    }
-
-    const rect = map.getBoundingClientRect();
-    const clickX = e.clientX - rect.left;
-    const clickY = e.clientY - rect.top;
-
-    // Only allow placement on player's half
-    if ((playerSide === "player1" && clickY > rect.height / 2) ||
-        (playerSide === "player2" && clickY < rect.height / 2)) {
-      startText.textContent = "Place cards only on your side!";
-      return;
-    }
-
-    placeCardOnMap(selectedCardData.name || selectedCardData.id || playerDeck[selectedCardIndex], clickX, clickY);
-
-    // Remove placed card from deck and refresh
-    playerDeck.splice(selectedCardIndex, 1);
-    selectedCardIndex = null;
-    selectedCardData = null;
-    renderHand(playerDeck);
-    startText.textContent = "Card placed! Select another card or wait for battle.";
+// Load all card data into cache from Firestore
+async function loadCardData() {
+  const cardsSnapshot = await db.collection("cards").get();
+  cardsSnapshot.forEach(doc => {
+    const data = doc.data();
+    cardDataCache[doc.id] = {
+      name: data.name || doc.id,
+      hitpoints: data.hitpoints || 100,
+      damage: data.damage || 10,
+      targets: (data.targets || "ground").split(",").map(t => t.trim()),
+      elixir: data.elixir || 1,
+      bio: data.bio || "",
+      count: data.count || 1,
+      speed: data.speed || "medium",
+      range: data.range || "melee",
+      hitspeed: data.hitspeed || 1.0
+    };
   });
+}
 
-  // --- Place card visually on map and track it ---
-  function placeCardOnMap(cardId, x, y) {
+// Load lobby and decks, set player and enemy sides
+async function loadBattle() {
+  if (!lobbyId) {
+    startText.textContent = "❌ Lobby ID not found.";
+    return;
+  }
+
+  try {
+    const lobbySnap = await db.collection("lobbies").doc(lobbyId).get();
+    const lobbyData = lobbySnap.data();
+    if (!lobbyData || !lobbyData.players || lobbyData.players.length < 2) {
+      startText.textContent = "❌ Waiting for opponent...";
+      return;
+    }
+
+    const [uid1, uid2] = lobbyData.players;
+
+    const [player1Snap, player2Snap] = await Promise.all([
+      db.collection("players").doc(uid1).get(),
+      db.collection("players").doc(uid2).get(),
+    ]);
+
+    const player1 = player1Snap.data();
+    const player2 = player2Snap.data();
+
+    player1NameEl.textContent = player1.username || "Player 1";
+    player2NameEl.textContent = player2.username || "Player 2";
+
+    if (currentUser.uid === uid1) {
+      playerSide = "player1";
+      enemySide = "player2";
+      playerDeck = Array.isArray(player1.deck) ? [...player1.deck] : [];
+      enemyDeck = Array.isArray(player2.deck) ? [...player2.deck] : [];
+    } else if (currentUser.uid === uid2) {
+      playerSide = "player2";
+      enemySide = "player1";
+      playerDeck = Array.isArray(player2.deck) ? [...player2.deck] : [];
+      enemyDeck = Array.isArray(player1.deck) ? [...player1.deck] : [];
+    } else {
+      alert("You are not part of this battle.");
+      window.location.href = "home.html";
+      return;
+    }
+
+    await loadCardData();
+
+    renderHand(playerDeck);
+    renderTowers();
+    renderEnemyHand(enemyDeck);
+
+    startText.textContent = "✅ Battle Ready! Select a card and place it on your side.";
+  } catch (err) {
+    console.error(err);
+    startText.textContent = "❌ Error loading battle.";
+  }
+}
+
+// Render player's hand (clickable cards)
+function renderHand(deck) {
+  hand.innerHTML = '';
+  deck.forEach((cardId, idx) => {
     const cardData = cardDataCache[cardId];
     if (!cardData) return;
-
     const cardEl = document.createElement('div');
-    cardEl.classList.add('placed-card');
+    cardEl.classList.add('card');
     cardEl.textContent = cardData.name || cardId;
-    cardEl.style.left = `${x - 30}px`;
-    cardEl.style.top = `${y - 40}px`;
-
-    const hpBarContainer = document.createElement('div');
-    hpBarContainer.className = 'hp-bar-container';
-    hpBarContainer.style.top = '5px';
-    hpBarContainer.style.position = 'absolute';
-    hpBarContainer.style.left = '50%';
-    hpBarContainer.style.transform = 'translateX(-50%)';
-    hpBarContainer.style.width = '70%';
-    hpBarContainer.style.height = '8px';
-    hpBarContainer.style.background = '#333';
-    hpBarContainer.style.borderRadius = '4px';
-
-    const hpBar = document.createElement('div');
-    hpBar.className = 'hp-bar';
-    hpBar.style.width = '100%';
-    hpBar.style.height = '100%';
-    hpBar.style.backgroundColor = '#0f0';
-    hpBar.style.borderRadius = '4px';
-
-    hpBarContainer.appendChild(hpBar);
-    cardEl.appendChild(hpBarContainer);
-    map.appendChild(cardEl);
-
-    placedCards.push({
-      id: cardId,
-      owner: playerSide,
-      x,
-      y,
-      hp: cardData.hitpoints,
-      maxHp: cardData.hitpoints,
-      damage: cardData.damage,
-      targets: cardData.targets,
-      speed: parseSpeed(cardData.speed),
-      range: parseRange(cardData.range),
-      hitspeed: cardData.hitspeed || 1.0,
-      attackCooldown: 0,
-      domElement: cardEl,
-      hpBarElement: hpBar
-    });
-  }
-
-  // --- Utility functions ---
-  function parseSpeed(speedStr) {
-    switch((speedStr || '').toLowerCase()) {
-      case "slow": return 30;
-      case "medium": return 60;
-      case "fast": return 120;
-      default:
-        let n = parseFloat(speedStr);
-        return isNaN(n) ? 60 : n;
-    }
-  }
-
-  function parseRange(rangeStr) {
-    switch((rangeStr || '').toLowerCase()) {
-      case "melee": return 40;
-      case "short": return 80;
-      case "medium": return 150;
-      case "long": return 250;
-      default:
-        let n = parseFloat(rangeStr);
-        return isNaN(n) ? 50 : n;
-    }
-  }
-
-  function distance(x1, y1, x2, y2) {
-    return Math.hypot(x2 - x1, y2 - y1);
-  }
-
-  function findTarget(card) {
-    const enemySideLocal = (card.owner === 'player1') ? 'player2' : 'player1';
-
-    // Try enemy cards first
-    const enemyCards = placedCards.filter(c =>
-      c.owner === enemySideLocal &&
-      c.hp > 0 &&
-      card.targets.some(t => c.targets.includes(t))
-    );
-
-    if (enemyCards.length > 0) {
-      enemyCards.sort((a, b) => {
-        return distance(card.x, card.y, a.x, a.y) - distance(card.x, card.y, b.x, b.y);
-      });
-      return enemyCards[0];
-    }
-
-    // Optionally target enemy towers (if you implement them)
-
-    return null;
-  }
-
-  function applyDamage(target, damage) {
-    target.hp -= damage;
-    if (target.hp < 0) target.hp = 0;
-
-    if (target.hpBarElement) {
-      const hpPercent = (target.hp / target.maxHp) * 100;
-      target.hpBarElement.style.width = hpPercent + "%";
-
-      if (hpPercent > 50) target.hpBarElement.style.backgroundColor = "#0f0";
-      else if (hpPercent > 20) target.hpBarElement.style.backgroundColor = "#ff0";
-      else target.hpBarElement.style.backgroundColor = "#f00";
-    }
-
-    if (target.hp === 0 && target.domElement) {
-      // Optionally remove or fade out dead card
-      target.domElement.style.opacity = 0.3;
-      // setTimeout(() => target.domElement.remove(), 2000);
-    }
-  }
-
-  // --- Game loop for card actions ---
-  let lastUpdateTime = performance.now();
-  function gameLoop() {
-    const now = performance.now();
-    const deltaTime = (now - lastUpdateTime) / 1000;
-    lastUpdateTime = now;
-
-    placedCards.forEach(card => {
-      if (card.hp <= 0) return;
-
-      card.attackCooldown -= deltaTime;
-      if (card.attackCooldown < 0) card.attackCooldown = 0;
-
-      const target = findTarget(card);
-      if (!target) return;
-
-      const dist = distance(card.x, card.y, target.x, target.y);
-
-      if (dist > card.range) {
-        const dx = target.x - card.x;
-        const dy = target.y - card.y;
-        const angle = Math.atan2(dy, dx);
-
-        const moveDist = Math.min(card.speed * deltaTime, dist - card.range);
-        card.x += Math.cos(angle) * moveDist;
-        card.y += Math.sin(angle) * moveDist;
-
-        if (card.domElement) {
-          card.domElement.style.left = `${card.x - 30}px`;
-          card.domElement.style.top = `${card.y - 40}px`;
-        }
+    cardEl.title = `${cardData.name}\nHP: ${cardData.hitpoints}\nDamage: ${cardData.damage}\nTargets: ${cardData.targets.join(", ")}`;
+    cardEl.dataset.idx = idx;
+    cardEl.addEventListener('click', () => {
+      if (selectedCardIndex === idx) {
+        selectedCardIndex = null;
+        selectedCardData = null;
       } else {
-        if (card.attackCooldown === 0) {
-          applyDamage(target, card.damage);
-          card.attackCooldown = card.hitspeed;
-          startText.textContent = `${card.id} attacks ${target.id} for ${card.damage} damage!`;
-        }
+        selectedCardIndex = idx;
+        selectedCardData = cardData;
       }
+      updateHandSelection();
     });
+    hand.appendChild(cardEl);
+  });
+  updateHandSelection();
+}
 
-    requestAnimationFrame(gameLoop);
+function updateHandSelection() {
+  const cards = hand.querySelectorAll('.card');
+  cards.forEach((c, i) => {
+    c.classList.toggle('selected', i === selectedCardIndex);
+  });
+}
+
+function renderEnemyHand(deck) {
+  // Optional: display enemy deck somewhere or keep for AI logic
+  // For now, no UI
+}
+
+// Map click to place card
+map.addEventListener("click", e => {
+  if (selectedCardIndex === null || !selectedCardData) {
+    startText.textContent = "Select a card first!";
+    return;
   }
 
-  // --- Start the game after auth ---
-  auth.onAuthStateChanged(user => {
-    if (!user) {
-      window.location.href = "index.html";
-      return;
-    }
-    currentUser = user;
-    loadBattle().then(() => {
-      gameLoop();
-    });
+  const rect = map.getBoundingClientRect();
+  const clickX = e.clientX - rect.left;
+  const clickY = e.clientY - rect.top;
+
+  // Restrict placement by side (top half = player1, bottom half = player2)
+  if ((playerSide === "player1" && clickY > rect.height / 2) ||
+      (playerSide === "player2" && clickY < rect.height / 2)) {
+    startText.textContent = "Place cards only on your side!";
+    return;
+  }
+
+  placeCardOnMap(playerDeck[selectedCardIndex], clickX, clickY);
+
+  // Remove card from deck and rerender hand
+  playerDeck.splice(selectedCardIndex, 1);
+  selectedCardIndex = null;
+  selectedCardData = null;
+  renderHand(playerDeck);
+
+  startText.textContent = "Card placed! Select another card or wait for battle.";
+});
+
+function placeCardOnMap(cardId, x, y) {
+  const cardData = cardDataCache[cardId];
+  if (!cardData) return;
+
+  const cardEl = document.createElement('div');
+  cardEl.classList.add('placed-card');
+  cardEl.textContent = cardData.name || cardId;
+  cardEl.style.left = `${x - 30}px`;
+  cardEl.style.top = `${y - 40}px`;
+
+  // HP bar container
+  const hpBarContainer = document.createElement('div');
+  hpBarContainer.className = 'hp-bar-container';
+
+  // HP bar
+  const hpBar = document.createElement('div');
+  hpBar.className = 'hp-bar';
+
+  hpBarContainer.appendChild(hpBar);
+  cardEl.appendChild(hpBarContainer);
+  map.appendChild(cardEl);
+
+  placedCards.push({
+    id: cardId,
+    owner: playerSide,
+    x,
+    y,
+    hp: cardData.hitpoints,
+    maxHp: cardData.hitpoints,
+    damage: cardData.damage,
+    targets: cardData.targets,
+    speed: parseSpeed(cardData.speed),
+    range: parseRange(cardData.range),
+    hitspeed: cardData.hitspeed || 1.0,
+    attackCooldown: 0,
+    domElement: cardEl,
+    hpBarElement: hpBar
   });
+}
+
+// Helpers
+function parseSpeed(speedStr) {
+  switch((speedStr || '').toLowerCase()) {
+    case "slow": return 30;
+    case "medium": return 60;
+    case "fast": return 120;
+    default:
+      const n = parseFloat(speedStr);
+      return isNaN(n) ? 60 : n;
+  }
+}
+
+function parseRange(rangeStr) {
+  switch((rangeStr || '').toLowerCase()) {
+    case "melee": return 40;
+    case "short": return 80;
+    case "medium": return 150;
+    case "long": return 250;
+    default:
+      const n = parseFloat(rangeStr);
+      return isNaN(n) ? 50 : n;
+  }
+}
+
+function distance(x1, y1, x2, y2) {
+  const dx = x1 - x2;
+  const dy = y1 - y2;
+  return Math.sqrt(dx*dx + dy*dy);
+}
+
+function findTarget(card) {
+  // Find nearest enemy card in range
+  const enemies = placedCards.filter(c => c.owner !== card.owner && c.hp > 0);
+  let closest = null;
+  let minDist = Infinity;
+
+  for (const enemy of enemies) {
+    const dist = distance(card.x, card.y, enemy.x, enemy.y);
+    if (dist <= card.range && dist < minDist) {
+      minDist = dist;
+      closest = enemy;
+    }
+  }
+  return closest;
+}
+
+function applyDamage(card, damage) {
+  card.hp -= damage;
+  if (card.hp < 0) card.hp = 0;
+  // Update HP bar width
+  if (card.hpBarElement) {
+    card.hpBarElement.style.width = `${(card.hp / card.maxHp) * 100}%`;
+    if(card.hp / card.maxHp < 0.3) {
+      card.hpBarElement.style.backgroundColor = '#f00'; // red if low hp
+    }
+  }
+  if (card.hp === 0 && card.domElement) {
+    card.domElement.style.opacity = 0.5;
+  }
+}
+
+// Game loop for movement and attacking
+let lastUpdateTime = performance.now();
+function gameLoop() {
+  const now = performance.now();
+  const deltaTime = (now - lastUpdateTime) / 1000;
+  lastUpdateTime = now;
+
+  placedCards.forEach(card => {
+    if (card.hp <= 0) return;
+
+    card.attackCooldown -= deltaTime;
+    if (card.attackCooldown < 0) card.attackCooldown = 0;
+
+    const target = findTarget(card);
+    if (!target) return;
+
+    const dist = distance(card.x, card.y, target.x, target.y);
+
+    if (dist > card.range) {
+      // Move closer
+      const dx = target.x - card.x;
+      const dy = target.y - card.y;
+      const angle = Math.atan2(dy, dx);
+
+      const moveDist = Math.min(card.speed * deltaTime, dist - card.range);
+      card.x += Math.cos(angle) * moveDist;
+      card.y += Math.sin(angle) * moveDist;
+
+      if (card.domElement) {
+        card.domElement.style.left = `${card.x - 30}px`;
+        card.domElement.style.top = `${card.y - 40}px`;
+      }
+    } else {
+      if (card.attackCooldown === 0) {
+        applyDamage(target, card.damage);
+        card.attackCooldown = card.hitspeed;
+        startText.textContent = `${card.id} attacks ${target.id} for ${card.damage} damage!`;
+      }
+    }
+  });
+
+  requestAnimationFrame(gameLoop);
+}
+
+// Render towers placeholder (implement as needed)
+function renderTowers() {
+  // You can add tower elements if your game has them
+}
+
+// Start auth listener and load battle/game loop
+auth.onAuthStateChanged(user => {
+  if (!user) {
+    window.location.href = "index.html";
+    return;
+  }
+  currentUser = user;
+  loadBattle().then(() => {
+    gameLoop();
+  });
+});
+
 </script>
 
 </body>
