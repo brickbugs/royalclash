@@ -422,6 +422,48 @@ function renderPlacedCard(id, data) {
     hpBarElement: hpBar,
   });
 }
+// 1. Define placeCardOnMap function first
+function placeCardOnMap(cardId, x, y) {
+  const cardData = cardDataCache[cardId.toLowerCase()];
+  if (!cardData) {
+    console.warn(`Card data missing for cardId: ${cardId}`);
+    return;
+  }
+
+  const cardEl = document.createElement('div');
+  cardEl.classList.add('placed-card');
+  cardEl.textContent = cardData.name || cardId;
+  cardEl.style.left = `${x - 30}px`;
+  cardEl.style.top = `${y - 40}px`;
+
+  // Create HP bar
+  const hpBarContainer = document.createElement('div');
+  hpBarContainer.className = 'hp-bar-container';
+  const hpBar = document.createElement('div');
+  hpBar.className = 'hp-bar';
+  hpBar.style.width = '100%';
+  hpBarContainer.appendChild(hpBar);
+  cardEl.appendChild(hpBarContainer);
+
+  map.appendChild(cardEl);
+
+  placedCards.push({
+    id: cardId,
+    owner: playerSide,
+    x,
+    y,
+    hp: cardData.hitpoints,
+    maxHp: cardData.hitpoints,
+    damage: cardData.damage,
+    targets: cardData.targets,
+    speed: parseSpeed(cardData.speed),
+    range: parseRange(cardData.range),
+    hitspeed: cardData.hitspeed || 1.0,
+    attackCooldown: 0,
+    domElement: cardEl,
+    hpBarElement: hpBar,
+  });
+}
 
 // Utility parse functions for speed and range
 function parseSpeed(speedStr) {
@@ -447,7 +489,7 @@ function parseRange(rangeStr) {
   }
 }
 
-// Place card on map when clicked
+// 2. Then your event listener can safely call placeCardOnMap
 map.addEventListener("click", (e) => {
   if (selectedCardIndex === null || !selectedCardData) {
     startText.textContent = "Select a card first!";
@@ -458,7 +500,6 @@ map.addEventListener("click", (e) => {
   const clickX = e.clientX - rect.left;
   const clickY = e.clientY - rect.top;
 
-  // Restrict placement to player's side (example: top half for player1, bottom half for player2)
   if ((playerSide === "player1" && clickY > rect.height / 2) ||
       (playerSide === "player2" && clickY < rect.height / 2)) {
     startText.textContent = "Place cards only on your side!";
@@ -467,13 +508,10 @@ map.addEventListener("click", (e) => {
 
   placeCardOnMap(playerDeck[selectedCardIndex], clickX, clickY);
 
-// Clear selection after placing (deck update will come from Firestore listener)
-selectedCardIndex = null;
-selectedCardData = null;
-startText.textContent = "Card placed! Select another card or wait for battle.";
-
+  selectedCardIndex = null;
+  selectedCardData = null;
+  startText.textContent = "Card placed! Select another card or wait for battle.";
 });
-
 // Place enemy cards automatically on enemy side
 function placeEnemyCards(deck) {
   // Example positions: spread enemy cards on their side of the map (bottom half)
