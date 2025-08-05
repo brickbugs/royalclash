@@ -362,6 +362,8 @@ function renderPlacedCard(id, data) {
   cardEl.style.left = `${data.x - 30}px`;
   cardEl.style.top = `${data.y - 40}px`;
   cardEl.style.zIndex = data.owner === playerSide ? 10 : 5;
+  cardEl.style.background = data.owner === "player1" ? "#2196f3cc" : "#e91e63cc"; // Blue for player1, pink for player2
+  cardEl.style.border = "2px solid white";
 
   const hpBarContainer = document.createElement("div");
   hpBarContainer.className = "hp-bar-container";
