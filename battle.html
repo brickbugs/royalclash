@@ -207,7 +207,10 @@ async function loadCardData() {
       elixir: data.elixir || 1,
       speed: data.speed || "medium",
       range: data.range || "melee",
-      hitspeed: data.hitspeed || 1.0
+      hitspeed: data.hitspeed || 1.0,
+      // NEW: Load skill name and cooldown from Firestore if available
+      skill: data.skill || null,
+      skillCooldownTime: data.skillCooldownTime || 0
     };
   });
   console.log("Card data loaded:", Object.keys(cardDataCache));
@@ -351,6 +354,7 @@ function renderPlacedCard(id, data) {
   el.appendChild(hpContainer);
   map.appendChild(el);
 
+  // Add skillCooldownTracker initialized to 0
   const cardObj = {
     id, owner: data.owner, x: data.x, y: data.y,
     hp: data.hp, maxHp: data.maxHp,
@@ -359,7 +363,12 @@ function renderPlacedCard(id, data) {
     range: parseRange(data.range),
     hitspeed: data.hitspeed,
     attackCooldown: 0,
-    domElement: el, hpBarElement: hpBar,
+    // NEW: Skill data and cooldown tracker
+    skill: cd.skill,
+    skillCooldownTime: cd.skillCooldownTime,
+    skillCooldownTracker: 0,
+    domElement: el,
+    hpBarElement: hpBar,
     targetX: data.x, targetY: data.y
   };
   placedCards.push(cardObj);
@@ -451,6 +460,18 @@ function gameLoop() {
     if (card.owner !== playerSide) return;
 
     card.attackCooldown = Math.max(0, card.attackCooldown - dt);
+
+    // NEW: Skill cooldown tracker update
+    if (card.skill) {
+      card.skillCooldownTracker = Math.max(0, card.skillCooldownTracker - dt);
+      if (card.skillCooldownTracker <= 0) {
+        // Run skill function from Skills repo (must exist globally)
+        if (typeof Skills === "object" && typeof Skills[card.skill] === "function") {
+          Skills[card.skill](card, placedCards, db, lobbyId);
+        }
+        card.skillCooldownTracker = card.skillCooldownTime;
+      }
+    }
 
     const target = placedCards.find(c =>
       c.owner !== card.owner && c.hp > 0 &&
