@@ -474,34 +474,44 @@ startText.textContent = "Card placed! Select another card or wait for battle.";
 
 });
 
-async function placeCardOnMap(cardId, x, y) {
-  const cardIdNormalized = cardId.toLowerCase();
-  const cardData = cardDataCache[cardIdNormalized];
-  if (!cardData) {
-    console.warn(`Card data missing for cardId: ${cardId}`);
-    return;
-  }
+function placeCardOnMap(cardId, x, y) {
+  const cardData = cardDataCache[cardId.toLowerCase()];
+  if (!cardData) return;
 
-  try {
-    await db.collection("lobbies").doc(lobbyId).collection("placements").add({
-      owner: playerSide,
-      cardId: cardIdNormalized,
-      x,
-      y,
-      hp: cardData.hitpoints,
-      maxHp: cardData.hitpoints,
-      damage: cardData.damage,
-      targets: cardData.targets,
-      speed: cardData.speed,
-      range: cardData.range,
-      hitspeed: cardData.hitspeed || 1.0,
-      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-    });
-  } catch (e) {
-    console.error("Failed to place card in Firestore", e);
-    startText.textContent = "Error placing card.";
-    return;
-  }
+  const cardEl = document.createElement('div');
+  cardEl.classList.add('placed-card');
+  cardEl.textContent = cardData.name || cardId;
+  cardEl.style.left = `${x - 30}px`;
+  cardEl.style.top = `${y - 40}px`;
+
+  // HP bar container and bar
+  const hpBarContainer = document.createElement('div');
+  hpBarContainer.className = 'hp-bar-container';
+
+  const hpBar = document.createElement('div');
+  hpBar.className = 'hp-bar';
+
+  hpBarContainer.appendChild(hpBar);
+  cardEl.appendChild(hpBarContainer);
+
+  map.appendChild(cardEl);
+
+  placedCards.push({
+    id: cardId,
+    owner: playerSide,
+    x,
+    y,
+    hp: cardData.hitpoints,
+    maxHp: cardData.hitpoints,
+    damage: cardData.damage,
+    targets: cardData.targets,
+    speed: parseSpeed(cardData.speed),
+    range: parseRange(cardData.range),
+    hitspeed: cardData.hitspeed || 1.0,
+    attackCooldown: 0,
+    domElement: cardEl,
+    hpBarElement: hpBar
+  });
 }
 
 
@@ -524,47 +534,63 @@ let lastUpdateTime = performance.now();
 
 function gameLoop() {
   const now = performance.now();
-  const deltaTime = (now - lastUpdateTime) / 1000; // seconds elapsed
+  const deltaTime = (now - lastUpdateTime) / 1000;
   lastUpdateTime = now;
 
   placedCards.forEach(card => {
-    if (card.hp <= 0) return; // dead card does nothing
+    if (card.hp <= 0) return; // Skip dead cards
 
-    card.attackCooldown -= deltaTime;
-    if (card.attackCooldown < 0) card.attackCooldown = 0;
+    // Reduce attack cooldown
+    card.attackCooldown = Math.max(0, card.attackCooldown - deltaTime);
 
-    const target = findTarget(card);
+    // Find a target: enemy card with hp > 0
+    const target = placedCards.find(c => c.owner !== card.owner && c.hp > 0);
     if (!target) return;
 
-    const dist = distance(card.x, card.y, target.x, target.y);
+    const dx = target.x - card.x;
+    const dy = target.y - card.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
 
     if (dist > card.range) {
-      // Move closer
-      const dx = target.x - card.x;
-      const dy = target.y - card.y;
+      // Move toward the target
       const angle = Math.atan2(dy, dx);
-
       const moveDist = Math.min(card.speed * deltaTime, dist - card.range);
+
       card.x += Math.cos(angle) * moveDist;
       card.y += Math.sin(angle) * moveDist;
 
+      // Update DOM element position
       if (card.domElement) {
         card.domElement.style.left = `${card.x - 30}px`;
         card.domElement.style.top = `${card.y - 40}px`;
       }
     } else {
-      // Attack if ready
+      // Within range, attack if cooldown ready
       if (card.attackCooldown === 0) {
-        applyDamage(target, card.damage);
+        // Deal damage to target
+        target.hp -= card.damage;
+        if (target.hp < 0) target.hp = 0;
+
+        // Reset attack cooldown
         card.attackCooldown = card.hitspeed;
 
-        startText.textContent = `${card.id} attacks ${target.id} for ${card.damage} damage!`;
+        // Update target HP bar visually
+        if (target.hpBarElement) {
+          const hpPercent = (target.hp / target.maxHp) * 100;
+          target.hpBarElement.style.width = `${hpPercent}%`;
+          // Optional: change color based on HP left
+          target.hpBarElement.style.backgroundColor = hpPercent < 30 ? "#f00" : "#0f0";
+        }
+
+        // Optional: log attacks
+        console.log(`${card.id} attacks ${target.id} for ${card.damage} damage!`);
       }
     }
   });
 
   requestAnimationFrame(gameLoop);
 }
+
 
 
 auth.onAuthStateChanged(async (user) => {
