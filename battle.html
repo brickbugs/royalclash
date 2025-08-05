@@ -266,7 +266,7 @@ function renderHand(deck) {
     const cardIdNormalized = cardId.toLowerCase();
     const cardData = cardDataCache[cardIdNormalized];
     if (!cardData) {
-      console.warn(Card data missing for cardId: ${cardId});
+            console.warn(`Card data missing for cardId: ${cardId}`);
       return;
     }
     const cardEl = document.createElement('div');
