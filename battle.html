@@ -529,25 +529,26 @@ function gameLoop() {
       return;
     }
 
-    // ✅ Attack logic and Firestore sync
-    if (card.attackCooldown === 0) {
-      const newHp = Math.max(0, target.hp - card.damage);
-      card.attackCooldown = card.hitspeed;
+   if (card.attackCooldown === 0) {
+  const newHp = Math.max(0, target.hp - card.damage);
+  card.attackCooldown = card.hitspeed;
 
-      // 🔥 Update Firestore so both clients reflect HP changes
-      db.collection("lobbies")
-        .doc(lobbyId)
-        .collection("placements")
-        .doc(target.id)
-        .update({
-          hp: newHp
-        })
-        .catch(err => console.error("Error updating HP:", err));
+  // 🔥 Update Firestore so both clients reflect HP changes
+  db.collection("lobbies")
+    .doc(lobbyId)
+    .collection("placements")
+    .doc(target.id)
+    .update({
+      hp: newHp
+    })
+    .catch(err => console.error("Error updating HP:", err));
 
-      // ✅ Update local value immediately so attacker sees feedback right away
-      target.hp = newHp;
+  // ✅ Update local value immediately so attacker sees feedback right away
+  target.hp = newHp;
 
-      console.log(${card.id} attacks ${target.id} for ${card.damage} damage);
+  console.log(`${card.id} attacks ${target.id} for ${card.damage} damage`);
+}
+
     }
   });
 
