@@ -474,7 +474,25 @@ startText.textContent = "Card placed! Select another card or wait for battle.";
 
 });
 
-function placeCardOnMap(cardId, x, y) {
+// Place enemy cards automatically on enemy side
+function placeEnemyCards(deck) {
+  // Example positions: spread enemy cards on their side of the map (bottom half)
+  const mapRect = map.getBoundingClientRect();
+  const startX = 100;
+  const startY = mapRect.height * 0.75;  // enemy side
+
+  deck.forEach((cardId, i) => {
+    // Spread cards horizontally
+    const x = startX + i * 100;
+    const y = startY + (Math.random() * 20 - 10);  // small vertical jitter
+
+    // Place enemy card on map
+    placeCardOnMapForEnemy(cardId, x, y);
+  });
+}
+
+// Similar to placeCardOnMap, but owner is enemySide
+function placeCardOnMapForEnemy(cardId, x, y) {
   const cardData = cardDataCache[cardId.toLowerCase()];
   if (!cardData) return;
 
@@ -498,7 +516,7 @@ function placeCardOnMap(cardId, x, y) {
 
   placedCards.push({
     id: cardId,
-    owner: playerSide,
+    owner: enemySide,    // enemy owner here!
     x,
     y,
     hp: cardData.hitpoints,
@@ -513,7 +531,6 @@ function placeCardOnMap(cardId, x, y) {
     hpBarElement: hpBar
   });
 }
-
 
 function distance(x1, y1, x2, y2) {
   const dx = x2 - x1;
@@ -599,9 +616,10 @@ auth.onAuthStateChanged(async (user) => {
     return;
   }
   currentUser = user;
-  await loadBattle();
-  startPlacementListener(); // Adds the click listener here
-  gameLoop();
+  await loadBattle();           // Load player and enemy decks, set sides
+  placeEnemyCards(enemyDeck);   // Place enemy cards on the map after loading decks
+  startPlacementListener();     // Start the player's card placement listener
+  gameLoop();                   // Start the game update loop
 });
 
 </script>
