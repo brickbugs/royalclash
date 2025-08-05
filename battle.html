@@ -303,6 +303,80 @@ function renderEnemyHand(deck) {
   // Optionally show enemy cards somewhere, or keep internal for AI logic
   console.log("Enemy deck loaded with cards:", deck.length);
 }
+let placedCards = []; // keep this global, or move up if already declared
+
+function startPlacementListener() {
+  // Detach previous listener if any
+  if (window.unsubscribePlacements) {
+    window.unsubscribePlacements();
+  }
+
+  window.unsubscribePlacements = db.collection("lobbies")
+    .doc(lobbyId)
+    .collection("placements")
+    .orderBy("createdAt")
+    .onSnapshot(snapshot => {
+      // Remove existing placed card DOM elements
+      placedCards.forEach(p => {
+        if (p.domElement && p.domElement.parentElement) {
+          p.domElement.parentElement.removeChild(p.domElement);
+        }
+      });
+      placedCards = [];
+
+      // Render each placement document
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        renderPlacedCard(doc.id, data);
+      });
+    });
+}
+
+function renderPlacedCard(id, data) {
+  const cardIdNormalized = data.cardId.toLowerCase();
+  const cardData = cardDataCache[cardIdNormalized];
+  if (!cardData) {
+    console.warn(`Card data missing for cardId: ${data.cardId}`);
+    return;
+  }
+
+  const cardEl = document.createElement("div");
+  cardEl.className = "placed-card";
+  cardEl.textContent = cardData.name || data.cardId;
+  cardEl.style.position = "absolute";
+  cardEl.style.left = `${data.x - 30}px`;
+  cardEl.style.top = `${data.y - 40}px`;
+  cardEl.style.zIndex = data.owner === playerSide ? 10 : 5;
+
+  // HP bar container and bar
+  const hpBarContainer = document.createElement("div");
+  hpBarContainer.className = "hp-bar-container";
+
+  const hpBar = document.createElement("div");
+  hpBar.className = "hp-bar";
+
+  hpBarContainer.appendChild(hpBar);
+  cardEl.appendChild(hpBarContainer);
+
+  map.appendChild(cardEl);
+
+  placedCards.push({
+    id,
+    owner: data.owner,
+    x: data.x,
+    y: data.y,
+    hp: data.hp,
+    maxHp: data.maxHp,
+    damage: data.damage,
+    targets: data.targets,
+    speed: parseSpeed(data.speed),
+    range: parseRange(data.range),
+    hitspeed: data.hitspeed,
+    attackCooldown: 0,
+    domElement: cardEl,
+    hpBarElement: hpBar,
+  });
+}
 
 // Utility parse functions for speed and range
 function parseSpeed(speedStr) {
@@ -348,59 +422,43 @@ map.addEventListener("click", (e) => {
 
   placeCardOnMap(playerDeck[selectedCardIndex], clickX, clickY);
 
-  // Remove placed card from deck & reset selection
-  playerDeck.splice(selectedCardIndex, 1);
-  selectedCardIndex = null;
-  selectedCardData = null;
+// Clear selection after placing (deck update will come from Firestore listener)
+selectedCardIndex = null;
+selectedCardData = null;
+startText.textContent = "Card placed! Select another card or wait for battle.";
 
-  renderHand(playerDeck);
-  startText.textContent = "Card placed! Select another card or wait for battle.";
 });
 
-function placeCardOnMap(cardId, x, y) {
-const cardIdNormalized = cardId.toLowerCase();
-const cardData = cardDataCache[cardIdNormalized];
-if (!cardData) {
-  console.warn(`Card data missing for cardId: ${cardId}`);
-  return;
+async function placeCardOnMap(cardId, x, y) {
+  const cardIdNormalized = cardId.toLowerCase();
+  const cardData = cardDataCache[cardIdNormalized];
+  if (!cardData) {
+    console.warn(`Card data missing for cardId: ${cardId}`);
+    return;
+  }
+
+  try {
+    await db.collection("lobbies").doc(lobbyId).collection("placements").add({
+      owner: playerSide,
+      cardId: cardIdNormalized,
+      x,
+      y,
+      hp: cardData.hitpoints,
+      maxHp: cardData.hitpoints,
+      damage: cardData.damage,
+      targets: cardData.targets,
+      speed: cardData.speed,
+      range: cardData.range,
+      hitspeed: cardData.hitspeed || 1.0,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+    });
+  } catch (e) {
+    console.error("Failed to place card in Firestore", e);
+    startText.textContent = "Error placing card.";
+    return;
+  }
 }
 
-
-  const cardEl = document.createElement("div");
-  cardEl.className = "placed-card";
-  cardEl.textContent = cardData.name || cardId;
-  cardEl.style.left = `${x - 30}px`;
-  cardEl.style.top = `${y - 40}px`;
-
-  // HP bar container and bar
-  const hpBarContainer = document.createElement("div");
-  hpBarContainer.className = "hp-bar-container";
-
-  const hpBar = document.createElement("div");
-  hpBar.className = "hp-bar";
-
-  hpBarContainer.appendChild(hpBar);
-  cardEl.appendChild(hpBarContainer);
-
-  map.appendChild(cardEl);
-
-  placedCards.push({
-    id: cardId,
-    owner: playerSide,
-    x,
-    y,
-    hp: cardData.hitpoints,
-    maxHp: cardData.hitpoints,
-    damage: cardData.damage,
-    targets: cardData.targets,
-    speed: parseSpeed(cardData.speed),
-    range: parseRange(cardData.range),
-    hitspeed: cardData.hitspeed || 1.0,
-    attackCooldown: 0,
-    domElement: cardEl,
-    hpBarElement: hpBar,
-  });
-}
 
 function distance(x1, y1, x2, y2) {
   const dx = x2 - x1;
@@ -481,8 +539,10 @@ auth.onAuthStateChanged(async (user) => {
   }
   currentUser = user;
   await loadBattle();
+  startPlacementListener(); // <--- Add this
   gameLoop();
 });
+
 
 </script>
 
