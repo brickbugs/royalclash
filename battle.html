@@ -83,15 +83,14 @@
     const db = firebase.firestore();
 
     const lobbyId = localStorage.getItem("lobbyId");
+    let currentUser = null;
+    let opponentUid = null;
+    let opponentName = null;
+    let declaredWinner = false;
 
-    let currentUser;
-    let opponentUid;
-    let opponentName;
+    const HEARTBEAT_INTERVAL_MS = 2000; // 2 seconds
+    const TIMEOUT_MS = 20000; // 20 seconds
 
-    const HEARTBEAT_INTERVAL_MS = 3000; // How often we update "lastSeen"
-    const TIMEOUT_MS = 10000; // How long to wait before declaring opponent disconnected
-
-    // Update our lastSeen timestamp every few seconds
     async function heartbeat() {
       if (!currentUser || !lobbyId) return;
       try {
@@ -103,31 +102,60 @@
       }
     }
 
-    async function declareWinner(winnerUid, loserUid) {
-      try {
-        // Give winner coins (less than normal reward)
-        const winnerDoc = await db.collection("players").doc(winnerUid).get();
-        const winnerData = winnerDoc.data();
-        const currentCoins = winnerData.coins ?? 0;
-        const reward = 40; // example regular reward is 50, this is 10 less
+    async function declareWinner(winnerUid, loserUid, reason) {
+      if (declaredWinner) return; // prevent multiple declarations
+      declaredWinner = true;
 
-        await db.collection("players").doc(winnerUid).update({
-          coins: currentCoins + reward
+      const winnerIsYou = winnerUid === currentUser.uid;
+      const winnerName = winnerIsYou ? "You" : opponentName;
+
+      document.getElementById("startText").textContent = `🏆 ${winnerName} win! (${reason})`;
+
+      try {
+        // Award coins
+        const winnerDocRef = db.collection("players").doc(winnerUid);
+        const loserDocRef = db.collection("players").doc(loserUid);
+
+        const winnerDoc = await winnerDocRef.get();
+        const loserDoc = await loserDocRef.get();
+
+        const winnerData = winnerDoc.data() || {};
+        const loserData = loserDoc.data() || {};
+
+        // Calculate coins reward: normal win = +20, disconnect win = +10 less = +10
+        const COINS_FOR_WIN = reason === "Opponent disconnected" ? 10 : 20;
+
+        // Update winner coins
+        await winnerDocRef.update({
+          coins: (winnerData.coins ?? 0) + COINS_FOR_WIN
         });
 
-        // Update UI
-        document.getElementById("startText").textContent = `🏆 ${winnerUid === currentUser.uid ? "You" : opponentName} win! (Opponent disconnected)`;
-        
-        // Clean up lobby (optional: delete lobby)
+        // Optional: You can penalize loser here if you want (not required)
+
+        // Delete lobby doc to clean up
         await db.collection("lobbies").doc(lobbyId).delete();
 
-        // Redirect to home after 5 seconds
-        setTimeout(() => {
-          localStorage.removeItem("lobbyId");
-          window.location.href = "home.html";
-        }, 5000);
       } catch (e) {
-        console.error("Error declaring winner:", e);
+        console.error("Error updating coins or cleaning lobby:", e);
+      }
+
+      setTimeout(() => {
+        localStorage.removeItem("lobbyId");
+        window.location.href = "home.html";
+      }, 5000);
+    }
+
+    function checkOpponentHeartbeat(lobbyData) {
+      if (!lobbyData) return;
+      const lastSeen = lobbyData.lastSeen || {};
+      if (!opponentUid || !lastSeen[opponentUid]) return;
+
+      const opponentLastSeen = lastSeen[opponentUid].toMillis();
+      const now = Date.now();
+
+      // If opponent lastSeen timestamp is older than TIMEOUT_MS, opponent is disconnected
+      if (now - opponentLastSeen > TIMEOUT_MS) {
+        declareWinner(currentUser.uid, opponentUid, "Opponent disconnected");
       }
     }
 
@@ -138,9 +166,7 @@
       }
 
       try {
-        const lobbyRef = db.collection("lobbies").doc(lobbyId);
-
-        const lobbySnap = await lobbyRef.get();
+        const lobbySnap = await db.collection("lobbies").doc(lobbyId).get();
         const lobbyData = lobbySnap.data();
         if (!lobbyData || lobbyData.players.length < 2) {
           document.getElementById("startText").textContent = "❌ Waiting for opponent...";
@@ -148,21 +174,24 @@
         }
 
         const [uid1, uid2] = lobbyData.players;
+
         currentUser = auth.currentUser;
+        if (!currentUser) {
+          window.location.href = "index.html";
+          return;
+        }
 
         // Determine opponent uid
         opponentUid = uid1 === currentUser.uid ? uid2 : uid1;
 
-        // Fetch player data
-        const [player1Snap, player2Snap] = await Promise.all([
-          db.collection("players").doc(uid1).get(),
-          db.collection("players").doc(uid2).get()
-        ]);
+        // Get player data
+        const player1Snap = await db.collection("players").doc(uid1).get();
+        const player2Snap = await db.collection("players").doc(uid2).get();
 
         const player1 = player1Snap.data();
         const player2 = player2Snap.data();
 
-        opponentName = (uid1 === currentUser.uid) ? player2.username : player1.username;
+        opponentName = uid1 === currentUser.uid ? player2.username : player1.username;
 
         // Display usernames
         document.querySelector("#player1 h2").textContent = player1.username;
@@ -174,6 +203,9 @@
 
         const deck1El = document.getElementById("deck1");
         const deck2El = document.getElementById("deck2");
+
+        deck1El.innerHTML = "";
+        deck2El.innerHTML = "";
 
         for (const card of deck1) {
           const cardEl = document.createElement("div");
@@ -189,24 +221,46 @@
           deck2El.appendChild(cardEl);
         }
 
-        document.getElementById("startText").textContent = "✅ Battle Ready! (Start your game logic here)";
+        document.getElementById("startText").textContent = "✅ Battle Ready!";
 
-        // Start heartbeat to update lastSeen
+        // Start heartbeat immediately and repeat every 2 seconds
+        heartbeat();
         setInterval(heartbeat, HEARTBEAT_INTERVAL_MS);
 
-        // Listen for disconnects:
-        lobbyRef.onSnapshot(doc => {
+        // Listen to lobby updates to monitor opponent heartbeat
+        db.collection("lobbies").doc(lobbyId).onSnapshot(doc => {
+          if (!doc.exists) return;
           const data = doc.data();
-          if (!data) return;
 
-          const lastSeen = data.lastSeen || {};
-          const now = Date.now();
+          // Check opponent heartbeat for disconnects
+          checkOpponentHeartbeat(data);
+        });
 
-          const opponentLastSeen = lastSeen[opponentUid] ? lastSeen[opponentUid].toDate().getTime() : 0;
+        // Detect if current player closes tab/browser and mark disconnect
+        window.addEventListener("beforeunload", async (event) => {
+          try {
+            // Update lobby to remove current player (or mark disconnected)
+            const lobbyRef = db.collection("lobbies").doc(lobbyId);
+            const lobbyDoc = await lobbyRef.get();
+            if (!lobbyDoc.exists) return;
 
-          // If opponent hasn't updated lastSeen within TIMEOUT_MS, we win
-          if (now - opponentLastSeen > TIMEOUT_MS) {
-            declareWinner(currentUser.uid, opponentUid);
+            const lobbyData = lobbyDoc.data();
+
+            if (lobbyData.players.includes(currentUser.uid)) {
+              // Remove player from lobby.players array
+              const updatedPlayers = lobbyData.players.filter(uid => uid !== currentUser.uid);
+
+              await lobbyRef.update({
+                players: updatedPlayers
+              });
+
+              // Optionally update lastSeen to distant past to force disconnect detection
+              await lobbyRef.update({
+                [`lastSeen.${currentUser.uid}`]: firebase.firestore.Timestamp.fromMillis(0)
+              });
+            }
+          } catch (e) {
+            console.error("Error during unload:", e);
           }
         });
 
