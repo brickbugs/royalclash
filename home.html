@@ -134,19 +134,33 @@
       window.location.href = "deck.html";
     }
 
-    cancelSearchButton.onclick = () => {
-      if (lobbyUnsubscribe) {
-        lobbyUnsubscribe();
-        lobbyUnsubscribe = null;
-      }
-      if (matchmakingTimeout) {
-        clearTimeout(matchmakingTimeout);
-        matchmakingTimeout = null;
-      }
-      matchStatus.textContent = "❌ Matchmaking cancelled.";
-      battleButton.disabled = false;
-      cancelSearchButton.style.display = "none";
-    };
+ cancelSearchButton.onclick = async () => {
+  if (lobbyUnsubscribe) {
+    lobbyUnsubscribe();
+    lobbyUnsubscribe = null;
+  }
+  if (matchmakingTimeout) {
+    clearTimeout(matchmakingTimeout);
+    matchmakingTimeout = null;
+  }
+
+  if (createdLobby && currentLobbyId) {
+    try {
+      await db.collection("lobbies").doc(currentLobbyId).delete();
+      console.log("Lobby deleted.");
+    } catch (err) {
+      console.error("Failed to delete lobby:", err);
+    }
+  }
+
+  matchStatus.textContent = "❌ Matchmaking cancelled.";
+  battleButton.disabled = false;
+  cancelSearchButton.style.display = "none";
+
+  currentLobbyId = null;
+  createdLobby = false;
+};
+
 
 battleButton.addEventListener("click", async () => {
   battleButton.disabled = true;
