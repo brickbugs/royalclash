@@ -146,51 +146,92 @@
       cancelSearchButton.style.display = "none";
     };
 
-    battleButton.addEventListener("click", async () => {
-      battleButton.disabled = true;
-      cancelSearchButton.style.display = "inline-block";
-      matchStatus.textContent = "🔍 Searching for an opponent...";
+battleButton.addEventListener("click", async () => {
+  battleButton.disabled = true;
+  cancelSearchButton.style.display = "inline-block";
+  matchStatus.textContent = "🔍 Searching for an opponent...";
 
-      try {
-        const user = auth.currentUser;
-        if (!user) throw new Error("User not logged in");
+  try {
+    const user = auth.currentUser;
+    if (!user) throw new Error("User not logged in");
 
-        const lobbiesRef = db.collection("lobbies");
+    const lobbiesRef = db.collection("lobbies");
 
-        // Step 1: Look for an open lobby
-        const openLobbySnapshot = await lobbiesRef
-          .where("ready", "==", false)
-          .limit(1)
-          .get();
+    // Step 1: Look for an open lobby
+    const openLobbySnapshot = await lobbiesRef
+      .where("ready", "==", false)
+      .limit(1)
+      .get();
 
-        let lobbyId;
-        if (!openLobbySnapshot.empty) {
-          // Join existing lobby
-          const lobbyDoc = openLobbySnapshot.docs[0];
-          const data = lobbyDoc.data();
+    let lobbyId;
+    let isJoining = false;
 
-          // Only join if lobby has 1 player and not yourself
-          if (data.players.length === 1 && data.players[0] !== user.uid) {
-            await lobbyDoc.ref.update({
-              players: [...data.players, user.uid],
-              ready: true
-            });
-            lobbyId = lobbyDoc.id;
-          }
+    if (!openLobbySnapshot.empty) {
+      const lobbyDoc = openLobbySnapshot.docs[0];
+      const data = lobbyDoc.data();
+
+      if (data.players.length === 1 && data.players[0] !== user.uid) {
+        await lobbyDoc.ref.update({
+          players: [...data.players, user.uid],
+          ready: true
+        });
+        lobbyId = lobbyDoc.id;
+        isJoining = true;
+      }
+    }
+
+    if (!lobbyId) {
+      // Create new lobby
+      const newLobby = await lobbiesRef.add({
+        players: [user.uid],
+        ready: false,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+      lobbyId = newLobby.id;
+    }
+
+    localStorage.setItem("lobbyId", lobbyId);
+
+    // ✅ BOTH players listen for readiness
+    lobbyUnsubscribe = lobbiesRef.doc(lobbyId).onSnapshot((doc) => {
+      const lobbyData = doc.data();
+      if (lobbyData && lobbyData.ready && lobbyData.players.length === 2) {
+        if (lobbyUnsubscribe) {
+          lobbyUnsubscribe();
+          lobbyUnsubscribe = null;
         }
-
-        if (!lobbyId) {
-          // Create a new lobby
-          const newLobby = await lobbiesRef.add({
-            players: [user.uid],
-            ready: false,
-            createdAt: firebase.firestore.FieldValue.serverTimestamp()
-          });
-          lobbyId = newLobby.id;
+        if (matchmakingTimeout) {
+          clearTimeout(matchmakingTimeout);
+          matchmakingTimeout = null;
         }
+        matchStatus.textContent = "✅ Match found! Starting battle...";
+        cancelSearchButton.style.display = "none";
 
-        localStorage.setItem("lobbyId", lobbyId); // For battle.html
+        setTimeout(() => {
+          window.location.href = "battle.html";
+        }, 1000);
+      }
+    });
 
+    // Cancel if no match after 30 seconds
+    matchmakingTimeout = setTimeout(() => {
+      if (lobbyUnsubscribe) {
+        lobbyUnsubscribe();
+        lobbyUnsubscribe = null;
+      }
+      matchStatus.textContent = "❌ No opponents found. Please try again.";
+      battleButton.disabled = false;
+      cancelSearchButton.style.display = "none";
+      matchmakingTimeout = null;
+    }, 30000);
+
+  } catch (err) {
+    console.error("Matchmaking error:", err);
+    matchStatus.textContent = "❌ Failed to find battle. Try again.";
+    battleButton.disabled = false;
+    cancelSearchButton.style.display = "none";
+  }
+});
         // Step 2: Listen for the lobby to be ready
         lobbyUnsubscribe = lobbiesRef.doc(lobbyId).onSnapshot((doc) => {
           const lobbyData = doc.data();
