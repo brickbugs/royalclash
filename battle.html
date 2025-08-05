@@ -258,28 +258,25 @@ async function loadBattle() {
 }
 
 function renderHand(deck) {
-  hand.innerHTML = "";
-  if (!deck.length) {
-    hand.textContent = "No cards in deck!";
-    return;
-  }
-
+  hand.innerHTML = '';
   deck.forEach((cardId, idx) => {
-   const cardIdNormalized = cardId.toLowerCase();
-const cardData = cardDataCache[cardIdNormalized];
-if (!cardData) {
-  console.warn(`Card data missing for cardId: ${cardId}`);
-  return;
-}
-
-
-    const cardEl = document.createElement("div");
-    cardEl.className = "card";
+    if (!cardId) {
+      console.warn(`Skipping invalid cardId at index ${idx}:`, cardId);
+      return;
+    }
+    const cardIdNormalized = cardId.toLowerCase();
+    const cardData = cardDataCache[cardIdNormalized];
+    if (!cardData) {
+      console.warn(`Card data missing for cardId: ${cardId}`);
+      return;
+    }
+    // rest of your rendering code
+    const cardEl = document.createElement('div');
+    cardEl.classList.add('card');
     cardEl.textContent = cardData.name || cardId;
     cardEl.title = `${cardData.name}\nHP: ${cardData.hitpoints}\nDamage: ${cardData.damage}\nTargets: ${cardData.targets.join(", ")}`;
     cardEl.dataset.idx = idx;
-
-    cardEl.addEventListener("click", () => {
+    cardEl.addEventListener('click', () => {
       if (selectedCardIndex === idx) {
         selectedCardIndex = null;
         selectedCardData = null;
@@ -289,12 +286,11 @@ if (!cardData) {
       }
       updateHandSelection();
     });
-
     hand.appendChild(cardEl);
   });
-
   updateHandSelection();
 }
+
 
 function updateHandSelection() {
   const cards = hand.querySelectorAll(".card");
