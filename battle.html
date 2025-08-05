@@ -128,10 +128,6 @@
   <div id="player2Name">Player 2</div>
 </div>
 <div id="hand" style="display:flex; gap:10px; justify-content:center; margin: 10px auto; width:800px;"></div>
-  <div id="elixirContainer" style="width: 800px; margin: 0 auto 5px auto; height: 30px; background: #222; border-radius: 10px; overflow: hidden; box-shadow: inset 0 0 5px #0f0;">
-  <div id="elixirBar" style="width: 0%; height: 100%; background: #4caf50; transition: width 0.3s ease;"></div>
-</div>
-
 <div id="map" style="position:relative; width:800px; height:400px; border:1px solid #000; margin: 0 auto;"></div>
 
 
@@ -260,22 +256,19 @@ function renderHand(deck) {
   hand.innerHTML = '';
   deck.forEach((cardId, idx) => {
     if (!cardId) {
-     console.warn(`Skipping invalid cardId at index ${idx}:`, cardId);
+      console.warn(Skipping invalid cardId at index ${idx}:, cardId);
       return;
     }
     const cardIdNormalized = cardId.toLowerCase();
     const cardData = cardDataCache[cardIdNormalized];
     if (!cardData) {
-            console.warn(`Card data missing for cardId: ${cardId}`);
+      console.warn(Card data missing for cardId: ${cardId});
       return;
     }
     const cardEl = document.createElement('div');
     cardEl.classList.add('card');
     cardEl.textContent = cardData.name || cardId;
-   cardEl.title = `${cardData.name}
-    HP: ${cardData.hitpoints}
-    Damage: ${cardData.damage}
-    Targets: ${cardData.targets.join(", ")}`;
+    cardEl.title = ${cardData.name}\nHP: ${cardData.hitpoints}\nDamage: ${cardData.damage}\nTargets: ${cardData.targets.join(", ")};
     cardEl.dataset.idx = idx;
     cardEl.addEventListener('click', () => {
       if (selectedCardIndex === idx) {
@@ -326,7 +319,7 @@ function startPlacementListener() {
 
             // Update HP bar
             const hpPercent = (card.hp / card.maxHp) * 100;
-            card.hpBarElement.style.width = hpPercent + "%";
+            card.hpBarElement.style.width = ${hpPercent}%;
             card.hpBarElement.style.backgroundColor = hpPercent < 30 ? "#f00" : "#0f0";
 
             if (card.hp <= 0) {
@@ -459,10 +452,7 @@ map.addEventListener("click", async (e) => {
     startText.textContent = "Card data missing, cannot place.";
     return;
   }
-  if (!spendElixir(cardData.elixir)) {
-    startText.textContent = "Not enough elixir!";
-    return;
-  }
+
   try {
     await db.collection("lobbies")
       .doc(lobbyId)
@@ -561,6 +551,7 @@ function gameLoop() {
 } else {
   console.warn("Skipping movement update: invalid card.id", card);
 }
+
         }
       }
       return;
@@ -585,49 +576,7 @@ function gameLoop() {
   requestAnimationFrame(gameLoop);
 }
 
-const MAX_ELIXIR = 10;
-let currentElixir = MAX_ELIXIR;
-const elixirRegenRate = 1; // Elixir per second
-const elixirBar = document.getElementById("elixirBar");
 
-// Function to update elixir bar width and color
-function updateElixirBar() {
-  const percent = (currentElixir / MAX_ELIXIR) * 100;
-  elixirBar.style.width = percent + "%";
-  
-  // Color changes based on elixir amount
-  if (percent > 60) {
-    elixirBar.style.backgroundColor = "#4caf50"; // green
-  } else if (percent > 30) {
-    elixirBar.style.backgroundColor = "#ffb300"; // amber
-  } else {
-    elixirBar.style.backgroundColor = "#f44336"; // red
-  }
-}
-
-// Regenerate elixir over time
-function elixirRegenLoop() {
-  if (currentElixir < MAX_ELIXIR) {
-    currentElixir = Math.min(currentElixir + elixirRegenRate * 0.1, MAX_ELIXIR);
-    updateElixirBar();
-  }
-  requestAnimationFrame(elixirRegenLoop);
-}
-
-// Call this when player places a card to reduce elixir
-function spendElixir(amount) {
-  if (currentElixir >= amount) {
-    currentElixir -= amount;
-    updateElixirBar();
-    return true;
-  }
-  return false;
-}
-
-// Initialize elixir bar
-updateElixirBar();
-elixirRegenLoop();
-   
 auth.onAuthStateChanged(async (user) => {
   if (!user) {
     window.location.href = "index.html";
@@ -641,4 +590,4 @@ auth.onAuthStateChanged(async (user) => {
 
 </script>
 </body>
-</html>
+</html> 
