@@ -291,6 +291,53 @@ function renderHand(deck) {
   updateHandSelection();
 }
 
+   // Utility function to calculate distance between two points
+function distance(x1, y1, x2, y2) {
+  return Math.hypot(x2 - x1, y2 - y1);
+}
+
+// Find nearest enemy card within placedCards
+function findTarget(card) {
+  const enemies = placedCards.filter(c => c.owner !== card.owner && c.hp > 0);
+  if (enemies.length === 0) return null;
+
+  let nearest = null;
+  let nearestDist = Infinity;
+  enemies.forEach(enemy => {
+    const dist = distance(card.x, card.y, enemy.x, enemy.y);
+    if (dist < nearestDist) {
+      nearestDist = dist;
+      nearest = enemy;
+    }
+  });
+  return nearest;
+}
+
+// Apply damage to a target card and update health bar UI
+function applyDamage(target, damage) {
+  target.hp -= damage;
+  if (target.hp < 0) target.hp = 0;
+
+  if (target.hpBarElement) {
+    const hpPercent = (target.hp / target.maxHp) * 100;
+    target.hpBarElement.style.width = hpPercent + "%";
+
+    if (hpPercent < 30) {
+      target.hpBarElement.style.backgroundColor = "#f00"; // red low hp
+    } else if (hpPercent < 60) {
+      target.hpBarElement.style.backgroundColor = "#ff9900"; // orange mid hp
+    } else {
+      target.hpBarElement.style.backgroundColor = "#0f0"; // green high hp
+    }
+  }
+
+  if (target.hp === 0) {
+    if (target.domElement) {
+      target.domElement.style.opacity = "0.5"; // faded dead card
+    }
+  }
+}
+
 
 function updateHandSelection() {
   const cards = hand.querySelectorAll(".card");
@@ -474,18 +521,17 @@ function findTarget(attacker) {
 }
 
 let lastUpdateTime = performance.now();
+
 function gameLoop() {
   const now = performance.now();
-  const deltaTime = (now - lastUpdateTime) / 1000;
+  const deltaTime = (now - lastUpdateTime) / 1000; // seconds elapsed
   lastUpdateTime = now;
 
   placedCards.forEach(card => {
-    if (card.hp <= 0) return;
+    if (card.hp <= 0) return; // dead card does nothing
 
-    if (card.attackCooldown > 0) {
-      card.attackCooldown -= deltaTime;
-      if (card.attackCooldown < 0) card.attackCooldown = 0;
-    }
+    card.attackCooldown -= deltaTime;
+    if (card.attackCooldown < 0) card.attackCooldown = 0;
 
     const target = findTarget(card);
     if (!target) return;
@@ -493,11 +539,12 @@ function gameLoop() {
     const dist = distance(card.x, card.y, target.x, target.y);
 
     if (dist > card.range) {
+      // Move closer
       const dx = target.x - card.x;
       const dy = target.y - card.y;
       const angle = Math.atan2(dy, dx);
-      const moveDist = Math.min(card.speed * deltaTime, dist - card.range);
 
+      const moveDist = Math.min(card.speed * deltaTime, dist - card.range);
       card.x += Math.cos(angle) * moveDist;
       card.y += Math.sin(angle) * moveDist;
 
@@ -505,30 +552,20 @@ function gameLoop() {
         card.domElement.style.left = `${card.x - 30}px`;
         card.domElement.style.top = `${card.y - 40}px`;
       }
-    } else if (card.attackCooldown === 0) {
-      // Deal damage
-      target.hp -= card.damage;
-      if (target.hp < 0) target.hp = 0;
+    } else {
+      // Attack if ready
+      if (card.attackCooldown === 0) {
+        applyDamage(target, card.damage);
+        card.attackCooldown = card.hitspeed;
 
-      // Update HP bar width
-      if (target.hpBarElement) {
-        const hpPercent = (target.hp / target.maxHp) * 100;
-        target.hpBarElement.style.width = `${hpPercent}%`;
-        if (hpPercent <= 30) {
-          target.hpBarElement.style.backgroundColor = "#f00"; // red if low hp
-        } else {
-          target.hpBarElement.style.backgroundColor = "#0f0"; // green otherwise
-        }
+        startText.textContent = `${card.id} attacks ${target.id} for ${card.damage} damage!`;
       }
-
-      card.attackCooldown = card.hitspeed;
-
-      startText.textContent = `${card.id} attacks ${target.id} for ${card.damage} damage!`;
     }
   });
 
   requestAnimationFrame(gameLoop);
 }
+
 
 auth.onAuthStateChanged(async (user) => {
   if (!user) {
@@ -537,10 +574,9 @@ auth.onAuthStateChanged(async (user) => {
   }
   currentUser = user;
   await loadBattle();
-  startPlacementListener(); // <--- Add this
+  startPlacementListener(); // Adds the click listener here
   gameLoop();
 });
-
 
 </script>
 
