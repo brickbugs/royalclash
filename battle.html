@@ -303,8 +303,6 @@ function renderEnemyHand(deck) {
   // Optionally show enemy cards somewhere, or keep internal for AI logic
   console.log("Enemy deck loaded with cards:", deck.length);
 }
-let placedCards = []; // keep this global, or move up if already declared
-
 function startPlacementListener() {
   // Detach previous listener if any
   if (window.unsubscribePlacements) {
