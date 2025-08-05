@@ -326,7 +326,7 @@ function startPlacementListener() {
 
             // Update HP bar
             const hpPercent = (card.hp / card.maxHp) * 100;
-            card.hpBarElement.style.width = ${hpPercent}%;
+            card.hpBarElement.style.width = hpPercent + "%";
             card.hpBarElement.style.backgroundColor = hpPercent < 30 ? "#f00" : "#0f0";
 
             if (card.hp <= 0) {
