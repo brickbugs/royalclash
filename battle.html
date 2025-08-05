@@ -272,7 +272,10 @@ function renderHand(deck) {
     const cardEl = document.createElement('div');
     cardEl.classList.add('card');
     cardEl.textContent = cardData.name || cardId;
-    cardEl.title = ${cardData.name}\nHP: ${cardData.hitpoints}\nDamage: ${cardData.damage}\nTargets: ${cardData.targets.join(", ")};
+   cardEl.title = `${cardData.name}
+    HP: ${cardData.hitpoints}
+    Damage: ${cardData.damage}
+    Targets: ${cardData.targets.join(", ")}`;
     cardEl.dataset.idx = idx;
     cardEl.addEventListener('click', () => {
       if (selectedCardIndex === idx) {
