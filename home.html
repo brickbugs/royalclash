@@ -128,35 +128,64 @@
       });
     }
 
-    async function joinQueue(uid) {
-      const queueRef = rtdb.ref("/matchmakingQueue");
-      const snapshot = await queueRef.once("value");
-      const queue = snapshot.val() || {};
+  async function joinQueue(uid) {
+  const queueRef = rtdb.ref("/matchmakingQueue");
 
-      // Remove self from queue before searching to avoid self-match
-      await rtdb.ref(`/matchmakingQueue/${uid}`).remove();
+  let matchedOpponent = null;
+  let matchId = null;
 
-      // Find another player in queue excluding self
-      const otherUid = Object.keys(queue).find(id => id !== uid);
-
-      if (otherUid) {
-        // Create a unique match ID
-        const matchId = rtdb.ref().push().key;
-
-        // Save match data for both players
-        await Promise.all([
-          rtdb.ref(`/matches/${uid}`).set({ matchId, opponent: otherUid }),
-          rtdb.ref(`/matches/${otherUid}`).set({ matchId, opponent: uid }),
-          rtdb.ref(`/matchmakingQueue/${otherUid}`).remove()
-        ]);
-
-        return { matched: true, matchId };
-      } else {
-        // No opponent, add self to queue
-        await rtdb.ref(`/matchmakingQueue/${uid}`).set(true);
-        return { matched: false };
-      }
+  await queueRef.transaction(queue => {
+    if (queue === null) {
+      // Empty queue, add self
+      queue = {};
+      queue[uid] = true;
+      return queue;
     }
+
+    // Find any opponent who is not self
+    const opponents = Object.keys(queue).filter(id => id !== uid);
+
+    if (opponents.length === 0) {
+      // No opponents, add self
+      queue[uid] = true;
+      return queue;
+    }
+
+    // Opponent found — pick first
+    matchedOpponent = opponents[0];
+
+    // Remove opponent from queue to avoid double matches
+    delete queue[matchedOpponent];
+
+    // Don't add self to queue because you are matched
+    return queue;
+  }, async (error, committed, snapshot) => {
+    if (error) {
+      console.error('Transaction failed:', error);
+      throw error;
+    } else if (!committed) {
+      console.log('Transaction aborted');
+    } else if (matchedOpponent) {
+      // Create a match ID only after successful removal of opponent from queue
+      matchId = rtdb.ref().push().key;
+
+      // Save match info for both players
+      await Promise.all([
+        rtdb.ref(`/matches/${uid}`).set({ matchId, opponent: matchedOpponent }),
+        rtdb.ref(`/matches/${matchedOpponent}`).set({ matchId, opponent: uid })
+      ]);
+    }
+  });
+
+  if (matchId) {
+    return { matched: true, matchId };
+  } else {
+    // Not matched, add self to queue (if not already)
+    await rtdb.ref(`/matchmakingQueue/${uid}`).set(true);
+    return { matched: false };
+  }
+}
+
 
     async function cancelSearch() {
       const user = auth.currentUser;
