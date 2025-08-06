@@ -131,45 +131,58 @@
       window.location.href = "deck.html";
     }
 
-    // Reference to the matchmaking queue document
-    const matchmakingRef = db.collection("matchmaking").doc("queue");
+    // New matchmaking approach: each waiting player has own doc in collection
+    const waitingPlayersRef = db.collection("matchmaking_waitingPlayers");
+    const matchesRef = db.collection("matches");
 
-   async function joinMatchmakingQueue(uid) {
-  return db.runTransaction(async (transaction) => {
-    const doc = await transaction.get(matchmakingRef);
-    let data = doc.exists ? doc.data() : { waitingPlayers: [], matches: [] };
+    async function joinMatchmakingQueue(uid) {
+      // Add yourself to waiting players collection
+      const waitingDocRef = waitingPlayersRef.doc(uid);
+      await waitingDocRef.set({
+        uid: uid,
+        joinedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
 
-    const waiting = data.waitingPlayers || [];
-    const matches = data.matches || [];
+      // Now try to find an opponent
+      const snapshot = await waitingPlayersRef.orderBy("joinedAt").get();
 
-    const opponentIndex = waiting.findIndex(id => id !== uid);
+      const waitingPlayers = snapshot.docs.map(doc => doc.id).filter(id => id !== uid);
 
-    if (opponentIndex >= 0) {
-      const opponentId = waiting[opponentIndex];
-      waiting.splice(opponentIndex, 1);
-      const newMatchId = db.collection("matches").doc().id;
-      matches.push({ players: [uid, opponentId], matchId: newMatchId });
+      if (waitingPlayers.length > 0) {
+        const opponentId = waitingPlayers[0];
 
-      if (doc.exists) {
-        transaction.update(matchmakingRef, { waitingPlayers: waiting, matches });
-      } else {
-        transaction.set(matchmakingRef, { waitingPlayers: waiting, matches });
+        // Remove both from waiting queue
+        await Promise.all([
+          waitingPlayersRef.doc(uid).delete(),
+          waitingPlayersRef.doc(opponentId).delete()
+        ]);
+
+        // Create match document
+        const newMatchRef = matchesRef.doc();
+        await newMatchRef.set({
+          players: [uid, opponentId],
+          createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+
+        return { matched: true, matchId: newMatchRef.id };
       }
-      return { matched: true, matchId: newMatchId };
-    } else {
-      if (!waiting.includes(uid)) {
-        waiting.push(uid);
-        if (doc.exists) {
-          transaction.update(matchmakingRef, { waitingPlayers: waiting, matches });
-        } else {
-          transaction.set(matchmakingRef, { waitingPlayers: waiting, matches });
-        }
-      }
+
       return { matched: false };
     }
-  });
-}
 
+    // Listen for matches where current user is included
+    function listenForMatch(uid, onMatchFound) {
+      return matchesRef
+        .where("players", "array-contains", uid)
+        .onSnapshot(snapshot => {
+          snapshot.docChanges().forEach(change => {
+            if (change.type === "added") {
+              const matchData = change.doc.data();
+              onMatchFound({ matchId: change.doc.id, matchData });
+            }
+          });
+        });
+    }
 
     battleButton.addEventListener("click", async () => {
       battleButton.disabled = true;
@@ -202,28 +215,20 @@
           battleButton.disabled = false;
           window.location.href = `battle.html?matchId=${result.matchId}`;
         } else {
-          // Listen for matches including this user
-          matchmakingUnsubscribe = matchmakingRef.onSnapshot((doc) => {
-            const data = doc.data();
-            if (!data) return;
+          // Listen for match
+          matchmakingUnsubscribe = listenForMatch(user.uid, ({ matchId }) => {
+            matchStatus.textContent = "✅ Match found! Starting battle...";
+            cancelSearchButton.style.display = "none";
+            battleButton.disabled = false;
 
-            const matches = data.matches || [];
-            const match = matches.find(m => m.players.includes(user.uid));
-
-            if (match) {
-              matchStatus.textContent = "✅ Match found! Starting battle...";
-              cancelSearchButton.style.display = "none";
-              battleButton.disabled = false;
-
-              if (matchmakingUnsubscribe) {
-                matchmakingUnsubscribe();
-                matchmakingUnsubscribe = null;
-              }
-              window.location.href = `battle.html?matchId=${match.matchId}`;
+            if (matchmakingUnsubscribe) {
+              matchmakingUnsubscribe();
+              matchmakingUnsubscribe = null;
             }
+            window.location.href = `battle.html?matchId=${matchId}`;
           });
 
-          // Timeout after 30 seconds
+          // Timeout after 30 seconds: remove user from waiting queue if no match found
           matchmakingTimeout = setTimeout(async () => {
             if (matchmakingUnsubscribe) {
               matchmakingUnsubscribe();
@@ -231,9 +236,7 @@
             }
 
             try {
-              await matchmakingRef.update({
-                waitingPlayers: firebase.firestore.FieldValue.arrayRemove(user.uid)
-              });
+              await waitingPlayersRef.doc(user.uid).delete();
             } catch (err) {
               console.error("Error removing user from queue on timeout:", err);
             }
@@ -265,9 +268,7 @@
       const user = auth.currentUser;
       if (user) {
         try {
-          await matchmakingRef.update({
-            waitingPlayers: firebase.firestore.FieldValue.arrayRemove(user.uid)
-          });
+          await waitingPlayersRef.doc(user.uid).delete();
         } catch (err) {
           console.error("Error removing user from queue on cancel:", err);
         }
