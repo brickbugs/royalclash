@@ -51,15 +51,18 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 
 <script>
-  const firebaseConfig = {
-    apiKey: "AIzaSyADqsChcYfhT_bAlQ1VWkrlga-oTJViz7U",
-    authDomain: "clashroyaleclone-ae764.firebaseapp.com",
-    projectId: "clashroyaleclone-ae764",
-    storageBucket: "clashroyaleclone-ae764.appspot.com",
-    messagingSenderId: "938364278081",
-    appId: "1:938364278081:web:1c214bd66caef6d7567dc0",
-    measurementId: "G-PT2GPP0JF5"
-  };
+ const firebaseConfig = {
+  apiKey: "AIzaSyADqsChcYfhT_bAlQ1VWkrlga-oTJViz7U",
+  authDomain: "clashroyaleclone-ae764.firebaseapp.com",
+  projectId: "clashroyaleclone-ae764",
+  storageBucket: "clashroyaleclone-ae764.appspot.com",
+  messagingSenderId: "938364278081",
+  appId: "1:938364278081:web:1c214bd66caef6d7567dc0",
+  measurementId: "G-PT2GPP0JF5",
+  databaseURL: "https://clashroyaleclone-ae764-default-rtdb.firebaseio.com"
+};
+
+
 
   firebase.initializeApp(firebaseConfig);
   const auth = firebase.auth();
