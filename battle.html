@@ -159,6 +159,7 @@ const map = document.getElementById("map");
 const startText = document.getElementById("startText");
 const player1NameEl = document.getElementById("player1Name");
 const player2NameEl = document.getElementById("player2Name");
+const elixirBar = document.getElementById("elixirBar");
 
 let currentUser = null;
 let playerSide = null;
@@ -169,14 +170,25 @@ let selectedCardIndex = null;
 let selectedCardData = null;
 let elixir = 10;
 let maxElixir = 10;
-const elixirBar = document.getElementById("elixirBar");
+let placedCards = [];
+let cardDataCache = {};
+const lobbyId = localStorage.getItem("lobbyId");
+
+// Firestore update throttling map
+const lastSyncTimes = new Map();
+function shouldSync(id, delay = 300) {
+  const now = Date.now();
+  if (!lastSyncTimes.has(id) || now - lastSyncTimes.get(id) > delay) {
+    lastSyncTimes.set(id, now);
+    return true;
+  }
+  return false;
+}
 
 function updateElixirBar() {
   const percent = (elixir / maxElixir) * 100;
   elixirBar.style.width = `${percent}%`;
 }
-
-// Regenerate elixir every 1 second
 setInterval(() => {
   if (elixir < maxElixir) {
     elixir = Math.min(maxElixir, elixir + 1);
@@ -184,10 +196,6 @@ setInterval(() => {
   }
 }, 1000);
 
-let placedCards = [];
-let cardDataCache = {};
-
-const lobbyId = localStorage.getItem("lobbyId");
 if (!lobbyId) {
   alert("Lobby ID not found! Redirecting to home.");
   window.location.href = "home.html";
@@ -208,12 +216,10 @@ async function loadCardData() {
       speed: data.speed || "medium",
       range: data.range || "melee",
       hitspeed: data.hitspeed || 1.0,
-      // NEW: Load skill name and cooldown from Firestore if available
       skill: data.skill || null,
       skillCooldownTime: data.skillCooldownTime || 0
     };
   });
-  console.log("Card data loaded:", Object.keys(cardDataCache));
 }
 
 async function loadBattle() {
@@ -263,29 +269,16 @@ async function loadBattle() {
 function renderHand(deck) {
   hand.innerHTML = '';
   deck.forEach((cardId, idx) => {
-    if (!cardId) {
-        console.warn(`Skipping invalid cardId at index ${idx}:`, cardId);
-      return;
-    }
-    const normalized = cardId.toLowerCase();
-    const cd = cardDataCache[normalized];
-    if (!cd) {
-      console.warn(`Card data missing for cardId: ${cardId}`);
-      return;
-    }
+    const cd = cardDataCache[cardId.toLowerCase()];
+    if (!cd) return;
     const cardEl = document.createElement('div');
     cardEl.classList.add('card');
     cardEl.innerHTML = `${cd.name}<br><span style="font-size:14px; color:#7be3ff;">${cd.elixir}⚡</span>`;
     cardEl.title = `${cd.name}\nHP: ${cd.hitpoints}\nDamage: ${cd.damage}\nTargets: ${cd.targets.join(", ")}`;
     cardEl.dataset.idx = idx;
     cardEl.addEventListener('click', () => {
-      if (selectedCardIndex === idx) {
-        selectedCardIndex = null;
-        selectedCardData = null;
-      } else {
-        selectedCardIndex = idx;
-        selectedCardData = cd;
-      }
+      selectedCardIndex = selectedCardIndex === idx ? null : idx;
+      selectedCardData = selectedCardIndex === null ? null : cd;
       updateHandSelection();
     });
     hand.appendChild(cardEl);
@@ -330,14 +323,10 @@ function startPlacementListener() {
 
 function renderPlacedCard(id, data) {
   const cd = cardDataCache[data.cardId?.toLowerCase()];
-  if (!cd) {
-    console.warn("Invalid placed cardId:", data.cardId);
-    return null;
-  }
+  if (!cd) return null;
   const el = document.createElement('div');
   el.className = 'placed-card';
-  el.textContent = cd.name || data.cardId;
-  el.style.position = 'absolute';
+  el.textContent = cd.name;
   el.style.left = `${data.x - 30}px`;
   el.style.top = `${data.y - 40}px`;
   el.style.zIndex = data.owner === playerSide ? 10 : 5;
@@ -347,14 +336,14 @@ function renderPlacedCard(id, data) {
   hpContainer.className = 'hp-bar-container';
   const hpBar = document.createElement('div');
   hpBar.className = 'hp-bar';
-  const pct = (data.hp / data.maxHp) * 100;
-  hpBar.style.width = `${pct}%`;
-  hpBar.style.backgroundColor = pct < 30 ? "#f00" : "#0f0";
   hpContainer.appendChild(hpBar);
   el.appendChild(hpContainer);
   map.appendChild(el);
 
-  // Add skillCooldownTracker initialized to 0
+  const pct = (data.hp / data.maxHp) * 100;
+  hpBar.style.width = `${pct}%`;
+  hpBar.style.backgroundColor = pct < 30 ? "#f00" : "#0f0";
+
   const cardObj = {
     id, owner: data.owner, x: data.x, y: data.y,
     hp: data.hp, maxHp: data.maxHp,
@@ -363,7 +352,6 @@ function renderPlacedCard(id, data) {
     range: parseRange(data.range),
     hitspeed: data.hitspeed,
     attackCooldown: 0,
-    // NEW: Skill data and cooldown tracker
     skill: cd.skill,
     skillCooldownTime: cd.skillCooldownTime,
     skillCooldownTracker: 0,
@@ -384,7 +372,6 @@ function parseRange(r) {
   if (r === "melee") return 40;
   return 150;
 }
-
 function distance(x1, y1, x2, y2) {
   return Math.hypot(x2 - x1, y2 - y1);
 }
@@ -404,12 +391,7 @@ map.addEventListener("click", async (e) => {
   const cardId = playerDeck[selectedCardIndex];
   const cd = cardDataCache[cardId.toLowerCase()];
   if (elixir < cd.elixir) {
-  startText.textContent = `❌ Not enough elixir! (${cd.elixir} needed)`;
-  return;
-}
-
-  if (!cd) {
-    startText.textContent = "Card data missing.";
+    startText.textContent = `❌ Not enough elixir! (${cd.elixir} needed)`;
     return;
   }
 
@@ -433,7 +415,6 @@ map.addEventListener("click", async (e) => {
     selectedCardData = null;
     elixir -= cd.elixir;
     updateElixirBar();
-
   } catch (err) {
     console.error("Error placing card:", err);
     startText.textContent = "Failed to place card.";
@@ -447,25 +428,20 @@ function gameLoop() {
   last = now;
 
   placedCards.forEach(card => {
-    if (!card || typeof card.hp !== 'number' || card.hp <= 0) return;
+    if (!card || card.hp <= 0) return;
 
     card.x += (card.targetX - card.x) * 0.15;
     card.y += (card.targetY - card.y) * 0.15;
-
-    if (card.domElement) {
-      card.domElement.style.left = `${card.x - 30}px`;
-      card.domElement.style.top = `${card.y - 40}px`;
-    }
+    card.domElement.style.left = `${card.x - 30}px`;
+    card.domElement.style.top = `${card.y - 40}px`;
 
     if (card.owner !== playerSide) return;
 
     card.attackCooldown = Math.max(0, card.attackCooldown - dt);
 
-    // NEW: Skill cooldown tracker update
     if (card.skill) {
       card.skillCooldownTracker = Math.max(0, card.skillCooldownTracker - dt);
       if (card.skillCooldownTracker <= 0) {
-        // Run skill function from Skills repo (must exist globally)
         if (typeof Skills === "object" && typeof Skills[card.skill] === "function") {
           Skills[card.skill](card, placedCards, db, lobbyId);
         }
@@ -474,7 +450,8 @@ function gameLoop() {
     }
 
     const target = placedCards.find(c =>
-      c.owner !== card.owner && c.hp > 0 &&
+      c.owner !== card.owner &&
+      c.hp > 0 &&
       distance(card.x, card.y, c.x, c.y) <= card.range
     );
 
@@ -490,7 +467,8 @@ function gameLoop() {
           card.y += Math.sin(angle) * moveDist;
           card.targetX = card.x;
           card.targetY = card.y;
-          if (card.id) {
+
+          if (card.id && shouldSync(card.id)) {
             db.collection("lobbies").doc(lobbyId).collection("placements").doc(card.id)
               .update({ x: card.x, y: card.y }).catch(console.error);
           }
@@ -501,9 +479,11 @@ function gameLoop() {
 
     if (card.attackCooldown <= 0) {
       const newHp = Math.max(0, target.hp - card.damage);
-      card.attackCooldown = card.hitspeed;
-      db.collection("lobbies").doc(lobbyId).collection("placements").doc(target.id)
-        .update({ hp: newHp }).catch(console.error);
+      if (shouldSync(target.id, 250)) {
+        card.attackCooldown = card.hitspeed;
+        db.collection("lobbies").doc(lobbyId).collection("placements").doc(target.id)
+          .update({ hp: newHp }).catch(console.error);
+      }
     }
   });
 
@@ -520,6 +500,7 @@ auth.onAuthStateChanged(async user => {
   startPlacementListener();
   gameLoop();
 });
-</script> 
+</script>
+
 </body>
 </html>
