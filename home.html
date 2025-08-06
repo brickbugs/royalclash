@@ -158,7 +158,7 @@
 
       const lobbyRef = rtdb.ref("lobbies");
 
-      const snapshot = await lobbyRef.orderByChild("ready").equalTo(false).limitToFirst(1).get();
+      const snapshot = await lobbyRef.orderByChild("ready").equalTo(false).limitToFirst(1).once("value");
       let joined = false;
 
       if (snapshot.exists()) {
