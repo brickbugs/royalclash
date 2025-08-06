@@ -1,106 +1,152 @@
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8" />
-  <title>Home - Clash Royale Clone</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      background-color: #f5f5f5;
-      text-align: center;
-      padding: 40px;
+<script>
+  const firebaseConfig = {
+    apiKey: "AIzaSyADqsChcYfhT_bAlQ1VWkrlga-oTJViz7U",
+    authDomain: "clashroyaleclone-ae764.firebaseapp.com",
+    projectId: "clashroyaleclone-ae764",
+    storageBucket: "clashroyaleclone-ae764.appspot.com",
+    messagingSenderId: "938364278081",
+    appId: "1:938364278081:web:1c214bd66caef6d7567dc0",
+    measurementId: "G-PT2GPP0JF5",
+    databaseURL: "https://clashroyaleclone-ae764-default-rtdb.firebaseio.com"
+  };
+
+  firebase.initializeApp(firebaseConfig);
+
+  const auth = firebase.auth();
+  const db = firebase.firestore();
+  const rtdb = firebase.database();
+
+  const usernameEl = document.getElementById("username");
+  const coinsEl = document.getElementById("coins");
+  const battleButton = document.getElementById("battleButton");
+  const cancelSearchButton = document.getElementById("cancelSearchButton");
+  const matchStatus = document.getElementById("matchStatus");
+
+  let matchListener = null;
+
+  auth.onAuthStateChanged(async (user) => {
+    if (!user) {
+      window.location.href = "index.html";
+      return;
     }
-    button {
-      margin: 10px;
-      padding: 10px 20px;
-      font-size: 16px;
-    }
-  </style>
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-    import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-    import { getFirestore, collection, query, where, getDocs, addDoc, updateDoc, doc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
-    const firebaseConfig = {
-      apiKey: "AIzaSyADqsChcYfhT_bAlQ1VWkrlga-oTJViz7U",
-      authDomain: "clashroyaleclone-ae764.firebaseapp.com",
-      projectId: "clashroyaleclone-ae764",
-      storageBucket: "clashroyaleclone-ae764.appspot.com",
-      messagingSenderId: "290948682331",
-      appId: "1:290948682331:web:fd0731ab8e38553e93c45f"
-    };
+    // Load player data from Firestore
+    const doc = await db.collection("players").doc(user.uid).get();
+    const data = doc.data();
 
-    const app = initializeApp(firebaseConfig);
-    const auth = getAuth(app);
-    const db = getFirestore(app);
+    usernameEl.textContent = `👤 Username: ${data?.username ?? "Unknown"}`;
+    coinsEl.textContent = `💰 Coins: ${data?.coins ?? 0}`;
+  });
 
-    let currentUserId = null;
+  function logout() {
+    auth.signOut().then(() => {
+      window.location.href = "index.html";
+    });
+  }
 
-    onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        currentUserId = user.uid;
-        document.getElementById("user-info").textContent = "Logged in as: " + user.uid;
-      } else {
-        window.location.href = "login.html";
+  function goToDeck() {
+    window.location.href = "deck.html";
+  }
+
+  // Clear localStorage match info on page load (prevent stale data)
+  localStorage.removeItem("matchId");
+  localStorage.removeItem("matchCreator");
+
+  // Listen for incoming match assignment from RTDB
+  function startMatchListener(uid) {
+    if (matchListener) matchListener.off();
+    matchListener = rtdb.ref(`/matches/${uid}`);
+    matchListener.on("value", (snapshot) => {
+      const matchData = snapshot.val();
+      if (matchData && matchData.matchId && matchData.matchCreator) {
+        matchStatus.textContent = "✅ Match found! Redirecting...";
+
+        // Save match info for battle.html to load
+        localStorage.setItem("matchId", matchData.matchId);
+        localStorage.setItem("matchCreator", matchData.matchCreator);
+
+        // Clean up match data for this user
+        rtdb.ref(`/matches/${uid}`).remove();
+
+        // Redirect to battle page with query param (optional)
+        window.location.href = `battle.html?matchId=${matchData.matchId}`;
       }
     });
+  }
 
-    async function findOrCreateLobby() {
-      const lobbiesRef = collection(db, "lobbies");
+  async function joinQueue(uid) {
+    const queueRef = rtdb.ref("/matchmakingQueue");
+    const snapshot = await queueRef.once("value");
+    const queue = snapshot.val() || {};
 
-      // Try to find open lobby not made by this user
-      const q = query(lobbiesRef, where("status", "==", "open"), where("creator", "!=", currentUserId));
-      const querySnapshot = await getDocs(q);
+    // Look for opponent waiting in queue who is NOT this uid
+    const otherUid = Object.keys(queue).find(id => id !== uid);
 
-      if (!querySnapshot.empty) {
-        const lobbyDoc = querySnapshot.docs[0];
-        await updateDoc(lobbyDoc.ref, {
-          status: "full",
-          player2: currentUserId,
-        });
-        window.location.href = `battle.html?matchId=${lobbyDoc.id}`;
-      } else {
-        // Create a new lobby
-        const newLobby = await addDoc(lobbiesRef, {
-          creator: currentUserId,
-          status: "open",
-          createdAt: Date.now()
-        });
-        waitForOpponent(newLobby.id);
-      }
+    if (otherUid) {
+      // Match found: create a unique matchId
+      const matchId = rtdb.ref().push().key;
+
+      // Determine match creator (we'll assign player with lex smaller uid as creator for consistency)
+      const matchCreator = uid < otherUid ? uid : otherUid;
+
+      // Create matches entries for both players with matchId and matchCreator
+      await Promise.all([
+        rtdb.ref(`/matches/${uid}`).set({ matchId, matchCreator, opponent: otherUid }),
+        rtdb.ref(`/matches/${otherUid}`).set({ matchId, matchCreator, opponent: uid }),
+        rtdb.ref(`/matchmakingQueue/${otherUid}`).remove()
+      ]);
+      return { matched: true, matchId, matchCreator };
+    } else {
+      // No opponent, add self to matchmaking queue
+      await rtdb.ref(`/matchmakingQueue/${uid}`).set(true);
+      return { matched: false };
+    }
+  }
+
+  battleButton.addEventListener("click", async () => {
+    battleButton.disabled = true;
+    cancelSearchButton.style.display = "inline-block";
+    matchStatus.textContent = "🔍 Searching for an opponent...";
+
+    const user = auth.currentUser;
+    if (!user) return;
+
+    const result = await joinQueue(user.uid);
+
+    if (result.matched) {
+      // Save match info locally and redirect immediately
+      localStorage.setItem("matchId", result.matchId);
+      localStorage.setItem("matchCreator", result.matchCreator);
+
+      matchStatus.textContent = "✅ Match found! Redirecting...";
+      window.location.href = `battle.html?matchId=${result.matchId}`;
+    } else {
+      // No immediate match, listen for matchmaking result
+      startMatchListener(user.uid);
+
+      // Timeout after 30 seconds of no match
+      setTimeout(() => {
+        cancelSearch();
+        matchStatus.textContent = "❌ No opponents found.";
+      }, 30000);
+    }
+  });
+
+  async function cancelSearch() {
+    const user = auth.currentUser;
+    if (!user) return;
+
+    if (matchListener) {
+      matchListener.off();
+      matchListener = null;
     }
 
-    function waitForOpponent(lobbyId) {
-      const interval = setInterval(async () => {
-        const docRef = doc(db, "lobbies", lobbyId);
-        const snapshot = await getDocs(query(collection(db, "lobbies"), where("__name__", "==", lobbyId)));
-        const lobby = snapshot.docs[0];
-        if (lobby && lobby.data().status === "full") {
-          clearInterval(interval);
-          window.location.href = `battle.html?matchId=${lobbyId}`;
-        }
-      }, 1000);
-    }
+    await rtdb.ref(`/matchmakingQueue/${user.uid}`).remove();
 
-    async function logout() {
-      await signOut(auth);
-      window.location.href = "login.html";
-    }
+    matchStatus.textContent = "❌ Matchmaking cancelled.";
+    battleButton.disabled = false;
+    cancelSearchButton.style.display = "none";
+  }
 
-    function goToDeck() {
-      window.location.href = "deck.html";
-    }
-
-    window.findOrCreateLobby = findOrCreateLobby;
-    window.logout = logout;
-    window.goToDeck = goToDeck;
-  </script>
-</head>
-<body>
-  <h1>Welcome to Clash Royale Clone</h1>
-  <div id="user-info">Loading...</div>
-  <button onclick="findOrCreateLobby()">Find Match</button>
-  <button onclick="goToDeck()">Go to Deck</button>
-  <button onclick="logout()">Logout</button>
-</body>
-</html>
+  cancelSearchButton.onclick = cancelSearch;
+</script>
