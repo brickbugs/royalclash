@@ -51,209 +51,230 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 
   <script>
-  const firebaseConfig = {
-    apiKey: "AIzaSyADqsChcYfhT_bAlQ1VWkrlga-oTJViz7U",
-    authDomain: "clashroyaleclone-ae764.firebaseapp.com",
-    projectId: "clashroyaleclone-ae764",
-    storageBucket: "clashroyaleclone-ae764.appspot.com",
-    messagingSenderId: "938364278081",
-    appId: "1:938364278081:web:1c214bd66caef6d7567dc0",
-    measurementId: "G-PT2GPP0JF5"
-  };
+    const firebaseConfig = {
+      apiKey: "AIzaSyADqsChcYfhT_bAlQ1VWkrlga-oTJViz7U",
+      authDomain: "clashroyaleclone-ae764.firebaseapp.com",
+      projectId: "clashroyaleclone-ae764",
+      storageBucket: "clashroyaleclone-ae764.appspot.com",
+      messagingSenderId: "938364278081",
+      appId: "1:938364278081:web:1c214bd66caef6d7567dc0",
+      measurementId: "G-PT2GPP0JF5"
+    };
 
-  firebase.initializeApp(firebaseConfig);
-  const auth = firebase.auth();
-  const db = firebase.firestore();
+    firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+    const db = firebase.firestore();
 
-  const usernameEl = document.getElementById("username");
-  const coinsEl = document.getElementById("coins");
-  const battleButton = document.getElementById("battleButton");
-  const cancelSearchButton = document.getElementById("cancelSearchButton");
-  const matchStatus = document.getElementById("matchStatus");
+    const usernameEl = document.getElementById("username");
+    const coinsEl = document.getElementById("coins");
+    const battleButton = document.getElementById("battleButton");
+    const cancelSearchButton = document.getElementById("cancelSearchButton");
+    const matchStatus = document.getElementById("matchStatus");
 
-  let lobbyUnsubscribe = null;
-  let matchmakingTimeout = null;
-  let currentLobbyId = null;
-  let createdLobby = false;
+    let matchmakingUnsubscribe = null;
+    let matchmakingTimeout = null;
 
-  function updateOnlineStatus() {
-    if (!navigator.onLine) {
-      matchStatus.textContent = "⚠️ You are offline. Check your internet connection.";
-      battleButton.disabled = true;
-    } else {
-      matchStatus.textContent = "";
-      battleButton.disabled = false;
+    // Update online/offline status
+    function updateOnlineStatus() {
+      if (!navigator.onLine) {
+        matchStatus.textContent = "⚠️ You are offline. Check your internet connection.";
+        battleButton.disabled = true;
+      } else {
+        matchStatus.textContent = "";
+        battleButton.disabled = false;
+      }
     }
-  }
+    window.addEventListener('offline', updateOnlineStatus);
+    window.addEventListener('online', updateOnlineStatus);
+    updateOnlineStatus();
 
-  window.addEventListener('offline', updateOnlineStatus);
-  window.addEventListener('online', updateOnlineStatus);
-  updateOnlineStatus();
-
-  auth.onAuthStateChanged(async (user) => {
-    if (!user) {
-      window.location.href = "index.html";
-      return;
-    }
-
-    usernameEl.textContent = "Loading username...";
-    coinsEl.textContent = "Loading coins...";
-
-    try {
-      const doc = await db.collection("players").doc(user.uid).get();
-      const data = doc.data();
-
-      if (!data) {
-        usernameEl.textContent = "⚠️ No user data found";
-        coinsEl.textContent = "";
+    auth.onAuthStateChanged(async (user) => {
+      if (!user) {
+        window.location.href = "index.html";
         return;
       }
 
-      usernameEl.textContent = `👤 Username: ${data.username}`;
-      coinsEl.textContent = `💰 Coins: ${data.coins ?? 0}`;
+      usernameEl.textContent = "Loading username...";
+      coinsEl.textContent = "Loading coins...";
 
-      if (data.coins === undefined) {
-        await db.collection("players").doc(user.uid).update({ coins: 100 });
-        coinsEl.textContent = `💰 Coins: 100`;
-      }
-    } catch (error) {
-      console.error("Error fetching user data:", error);
-      usernameEl.textContent = "⚠️ Unable to load username";
-      coinsEl.textContent = "";
-    }
-  });
-
-  function logout() {
-    auth.signOut().then(() => {
-      window.location.href = "index.html";
-    });
-  }
-
-  function goToDeck() {
-    window.location.href = "deck.html";
-  }
-
-  cancelSearchButton.onclick = async () => {
-    if (lobbyUnsubscribe) {
-      lobbyUnsubscribe();
-      lobbyUnsubscribe = null;
-    }
-    if (matchmakingTimeout) {
-      clearTimeout(matchmakingTimeout);
-      matchmakingTimeout = null;
-    }
-
-    if (createdLobby && currentLobbyId) {
       try {
-        await db.collection("lobbies").doc(currentLobbyId).delete();
-        console.log("Deleted lobby on cancel:", currentLobbyId);
-      } catch (err) {
-        console.error("Error deleting lobby on cancel:", err);
+        const doc = await db.collection("players").doc(user.uid).get();
+        const data = doc.data();
+
+        if (!data) {
+          usernameEl.textContent = "⚠️ No user data found";
+          coinsEl.textContent = "";
+          return;
+        }
+
+        usernameEl.textContent = `👤 Username: ${data.username}`;
+        coinsEl.textContent = `💰 Coins: ${data.coins ?? 0}`;
+
+        if (data.coins === undefined) {
+          await db.collection("players").doc(user.uid).update({ coins: 100 });
+          coinsEl.textContent = `💰 Coins: 100`;
+        }
+      } catch (error) {
+        console.error("Error fetching user data:", error);
+        usernameEl.textContent = "⚠️ Unable to load username";
+        coinsEl.textContent = "";
       }
+    });
+
+    function logout() {
+      auth.signOut().then(() => {
+        window.location.href = "index.html";
+      });
     }
 
-    currentLobbyId = null;
-    createdLobby = false;
-    matchStatus.textContent = "❌ Matchmaking cancelled.";
-    battleButton.disabled = false;
-    cancelSearchButton.style.display = "none";
-  };
+    function goToDeck() {
+      window.location.href = "deck.html";
+    }
 
-  battleButton.addEventListener("click", async () => {
-    battleButton.disabled = true;
-    cancelSearchButton.style.display = "inline-block";
-    matchStatus.textContent = "🔍 Searching for an opponent...";
+    // Reference to the matchmaking queue document
+    const matchmakingRef = db.collection("matchmaking").doc("queue");
 
-    try {
-      const user = auth.currentUser;
-      if (!user) throw new Error("User not logged in");
+    // Function to join matchmaking queue atomically
+    async function joinMatchmakingQueue(uid) {
+      return db.runTransaction(async (transaction) => {
+        const doc = await transaction.get(matchmakingRef);
+        let data = doc.exists ? doc.data() : { waitingPlayers: [], matches: [] };
 
-      const lobbiesRef = db.collection("lobbies");
+        const waiting = data.waitingPlayers || [];
+        const matches = data.matches || [];
 
-      const openLobbySnapshot = await lobbiesRef
-        .where("ready", "==", false)
-        .limit(1)
-        .get();
+        // Try to find an opponent (not self)
+        const opponentIndex = waiting.findIndex(id => id !== uid);
 
-      let lobbyId = null;
+        if (opponentIndex >= 0) {
+          // Match found
+          const opponentId = waiting[opponentIndex];
+          waiting.splice(opponentIndex, 1); // Remove opponent from waiting
 
-      if (!openLobbySnapshot.empty) {
-        const lobbyDoc = openLobbySnapshot.docs[0];
-        const data = lobbyDoc.data();
+          // Create new matchId
+          const newMatchId = db.collection("matches").doc().id;
+          matches.push({ players: [uid, opponentId], matchId: newMatchId });
 
-        if (data.players.length === 1 && data.players[0] !== user.uid) {
-          await lobbyDoc.ref.update({
-            players: [...data.players, user.uid],
-            ready: true
-          });
-          lobbyId = lobbyDoc.id;
-          createdLobby = false;
-          currentLobbyId = lobbyId;
-        }
-      }
+          transaction.set(matchmakingRef, { waitingPlayers: waiting, matches }, { merge: true });
 
-      if (!lobbyId) {
-        const newLobby = await lobbiesRef.add({
-          players: [user.uid],
-          ready: false,
-          createdAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
-        lobbyId = newLobby.id;
-        createdLobby = true;
-        currentLobbyId = lobbyId;
-      }
-
-      localStorage.setItem("lobbyId", lobbyId);
-
-      lobbyUnsubscribe = lobbiesRef.doc(lobbyId).onSnapshot((doc) => {
-        const lobbyData = doc.data();
-        if (lobbyData && lobbyData.ready && lobbyData.players.length === 2) {
-          if (lobbyUnsubscribe) {
-            lobbyUnsubscribe();
-            lobbyUnsubscribe = null;
+          return { matched: true, matchId: newMatchId };
+        } else {
+          // No opponent, add self if not already waiting
+          if (!waiting.includes(uid)) {
+            waiting.push(uid);
+            transaction.set(matchmakingRef, { waitingPlayers: waiting, matches }, { merge: true });
           }
-          if (matchmakingTimeout) {
-            clearTimeout(matchmakingTimeout);
-            matchmakingTimeout = null;
-          }
-          matchStatus.textContent = "✅ Match found! Starting battle...";
-          cancelSearchButton.style.display = "none";
-
-          setTimeout(() => {
-            window.location.href = "battle.html";
-          }, 1000);
+          return { matched: false };
         }
       });
+    }
 
-      matchmakingTimeout = setTimeout(async () => {
-        if (lobbyUnsubscribe) {
-          lobbyUnsubscribe();
-          lobbyUnsubscribe = null;
-        }
-        if (createdLobby && currentLobbyId) {
-          try {
-            await db.collection("lobbies").doc(currentLobbyId).delete();
-            console.log("Deleted lobby on timeout:", currentLobbyId);
-          } catch (err) {
-            console.error("Error deleting lobby on timeout:", err);
-          }
-        }
+    battleButton.addEventListener("click", async () => {
+      battleButton.disabled = true;
+      cancelSearchButton.style.display = "inline-block";
+      matchStatus.textContent = "🔍 Searching for an opponent...";
 
-        matchStatus.textContent = "❌ No opponents found. Please try again.";
+      const user = auth.currentUser;
+      if (!user) {
+        matchStatus.textContent = "❌ Not logged in.";
         battleButton.disabled = false;
         cancelSearchButton.style.display = "none";
-        createdLobby = false;
-        currentLobbyId = null;
-        matchmakingTimeout = null;
-      }, 30000);
+        return;
+      }
 
-    } catch (err) {
-      console.error("Matchmaking error:", err);
-      matchStatus.textContent = "❌ Failed to find battle. Try again.";
+      if (matchmakingUnsubscribe) {
+        matchmakingUnsubscribe();
+        matchmakingUnsubscribe = null;
+      }
+      if (matchmakingTimeout) {
+        clearTimeout(matchmakingTimeout);
+        matchmakingTimeout = null;
+      }
+
+      try {
+        const result = await joinMatchmakingQueue(user.uid);
+
+        if (result.matched) {
+          matchStatus.textContent = "✅ Match found! Starting battle...";
+          cancelSearchButton.style.display = "none";
+          battleButton.disabled = false;
+          window.location.href = `battle.html?matchId=${result.matchId}`;
+        } else {
+          // Listen for matches including this user
+          matchmakingUnsubscribe = matchmakingRef.onSnapshot((doc) => {
+            const data = doc.data();
+            if (!data) return;
+
+            const matches = data.matches || [];
+            const match = matches.find(m => m.players.includes(user.uid));
+
+            if (match) {
+              matchStatus.textContent = "✅ Match found! Starting battle...";
+              cancelSearchButton.style.display = "none";
+              battleButton.disabled = false;
+
+              if (matchmakingUnsubscribe) {
+                matchmakingUnsubscribe();
+                matchmakingUnsubscribe = null;
+              }
+              window.location.href = `battle.html?matchId=${match.matchId}`;
+            }
+          });
+
+          // Timeout after 30 seconds
+          matchmakingTimeout = setTimeout(async () => {
+            if (matchmakingUnsubscribe) {
+              matchmakingUnsubscribe();
+              matchmakingUnsubscribe = null;
+            }
+
+            try {
+              await matchmakingRef.update({
+                waitingPlayers: firebase.firestore.FieldValue.arrayRemove(user.uid)
+              });
+            } catch (err) {
+              console.error("Error removing user from queue on timeout:", err);
+            }
+
+            matchStatus.textContent = "❌ No opponents found. Please try again.";
+            cancelSearchButton.style.display = "none";
+            battleButton.disabled = false;
+            matchmakingTimeout = null;
+          }, 30000);
+        }
+      } catch (err) {
+        console.error("Matchmaking error:", err);
+        matchStatus.textContent = "❌ Failed to find battle. Try again.";
+        battleButton.disabled = false;
+        cancelSearchButton.style.display = "none";
+      }
+    });
+
+    cancelSearchButton.onclick = async () => {
+      if (matchmakingUnsubscribe) {
+        matchmakingUnsubscribe();
+        matchmakingUnsubscribe = null;
+      }
+      if (matchmakingTimeout) {
+        clearTimeout(matchmakingTimeout);
+        matchmakingTimeout = null;
+      }
+
+      const user = auth.currentUser;
+      if (user) {
+        try {
+          await matchmakingRef.update({
+            waitingPlayers: firebase.firestore.FieldValue.arrayRemove(user.uid)
+          });
+        } catch (err) {
+          console.error("Error removing user from queue on cancel:", err);
+        }
+      }
+
+      matchStatus.textContent = "❌ Matchmaking cancelled.";
       battleButton.disabled = false;
       cancelSearchButton.style.display = "none";
-    }
-  });
+    };
   </script>
 </body>
 </html>
