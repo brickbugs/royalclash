@@ -23,11 +23,6 @@
       font-size: 16px;
       cursor: pointer;
     }
-    #lobbyList button {
-      display: block;
-      margin: 10px auto;
-      width: 200px;
-    }
     #matchStatus {
       margin-top: 20px;
       font-weight: bold;
@@ -43,14 +38,10 @@
     <p id="coins">Loading coins...</p>
   </div>
 
-  <div id="lobbySection">
-    <h2>Available Lobbies to Join</h2>
-    <div id="lobbyList">Loading lobbies...</div>
-    <button id="createLobbyBtn">🆕 Create New Lobby</button>
-  </div>
-
   <button onclick="goToDeck()">🃏 Deck Builder</button>
   <button onclick="logout()">🚪 Logout</button>
+  <button id="battleButton">⚔️ Find Battle</button>
+  <button id="cancelSearchButton" style="display:none;">✖️ Cancel Search</button>
 
   <p id="matchStatus"></p>
 
@@ -58,6 +49,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 
   <script>
     const firebaseConfig = {
@@ -67,20 +59,24 @@
       storageBucket: "clashroyaleclone-ae764.appspot.com",
       messagingSenderId: "938364278081",
       appId: "1:938364278081:web:1c214bd66caef6d7567dc0",
-      measurementId: "G-PT2GPP0JF5"
+      measurementId: "G-PT2GPP0JF5",
+      databaseURL: "https://clashroyaleclone-ae764-default-rtdb.firebaseio.com"
     };
 
     firebase.initializeApp(firebaseConfig);
     const auth = firebase.auth();
     const db = firebase.firestore();
+    const rtdb = firebase.database();
 
     const usernameEl = document.getElementById("username");
     const coinsEl = document.getElementById("coins");
-    const lobbyListEl = document.getElementById("lobbyList");
-    const createLobbyBtn = document.getElementById("createLobbyBtn");
+    const battleButton = document.getElementById("battleButton");
+    const cancelSearchButton = document.getElementById("cancelSearchButton");
     const matchStatus = document.getElementById("matchStatus");
 
     let currentUser = null;
+    let currentLobbyId = null;
+    let lobbyUnsubscribe = null;
 
     auth.onAuthStateChanged(async (user) => {
       if (!user) {
@@ -94,133 +90,7 @@
       const data = doc.data();
       usernameEl.textContent = `👤 Username: ${data?.username ?? "Unknown"}`;
       coinsEl.textContent = `💰 Coins: ${data?.coins ?? 0}`;
-
-      // Load lobbies list
-      loadOpenLobbies();
     });
-
-    async function loadOpenLobbies() {
-      lobbyListEl.textContent = "Loading lobbies...";
-      try {
-        // Query lobbies with exactly 1 player (open lobbies)
-        const lobbiesSnap = await db.collection("lobbies")
-          .where("playersCount", "==", 1)
-          .get();
-
-        if (lobbiesSnap.empty) {
-          lobbyListEl.textContent = "No open lobbies found.";
-          return;
-        }
-
-        lobbyListEl.innerHTML = "";
-        lobbiesSnap.forEach(doc => {
-          const data = doc.data();
-          const lobbyId = doc.id;
-          const ownerUid = data.ownerUid;
-
-          // Don’t show your own lobby
-          if (ownerUid === currentUser.uid) return;
-
-          const btn = document.createElement("button");
-          btn.textContent = `Join lobby by ${data.ownerName || "Player"}`;
-          btn.onclick = () => joinLobby(lobbyId, ownerUid);
-          lobbyListEl.appendChild(btn);
-        });
-
-        if (lobbyListEl.children.length === 0) {
-          lobbyListEl.textContent = "No open lobbies found.";
-        }
-      } catch (error) {
-        console.error("Failed to load lobbies:", error);
-        lobbyListEl.textContent = "Failed to load lobbies.";
-      }
-    }
-
-    async function joinLobby(lobbyId, ownerUid) {
-      matchStatus.textContent = "Joining lobby...";
-      const lobbyRef = db.collection("lobbies").doc(lobbyId);
-      const lobbySnap = await lobbyRef.get();
-
-      if (!lobbySnap.exists) {
-        alert("Lobby no longer exists.");
-        matchStatus.textContent = "";
-        loadOpenLobbies();
-        return;
-      }
-
-      const data = lobbySnap.data();
-
-      if (data.playersCount >= 2) {
-        alert("Lobby is full.");
-        matchStatus.textContent = "";
-        loadOpenLobbies();
-        return;
-      }
-
-      try {
-        // Add current player to lobby players array and increment count
-        await lobbyRef.update({
-          players: firebase.firestore.FieldValue.arrayUnion(currentUser.uid),
-          playersCount: firebase.firestore.FieldValue.increment(1)
-        });
-
-        // Use existing matchId or create new one if missing
-        let matchId = data.matchId;
-        if (!matchId) {
-          matchId = db.collection("lobbies").doc().id; // generate new id
-          await lobbyRef.update({ matchId });
-        }
-
-        // Store locally for battle.html to read
-        localStorage.setItem("matchId", matchId);
-        localStorage.setItem("matchCreator", ownerUid);
-
-        matchStatus.textContent = "✅ Joined lobby! Redirecting...";
-        window.location.href = `battle.html?matchId=${matchId}`;
-      } catch (err) {
-        console.error("Failed to join lobby:", err);
-        alert("Failed to join lobby.");
-        matchStatus.textContent = "";
-      }
-    }
-
-    createLobbyBtn.onclick = async () => {
-      matchStatus.textContent = "Creating lobby...";
-      const lobbyRef = db.collection("lobbies").doc(currentUser.uid);
-      const lobbySnap = await lobbyRef.get();
-
-      if (lobbySnap.exists) {
-        alert("You already have an open lobby.");
-        matchStatus.textContent = "";
-        return;
-      }
-
-      try {
-        const playerDoc = await db.collection("players").doc(currentUser.uid).get();
-        const username = playerDoc.data()?.username || "Player";
-
-        const matchId = db.collection("lobbies").doc().id;
-
-        await lobbyRef.set({
-          ownerUid: currentUser.uid,
-          ownerName: username,
-          players: [currentUser.uid],
-          playersCount: 1,
-          matchId,
-          createdAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
-
-        localStorage.setItem("matchId", matchId);
-        localStorage.setItem("matchCreator", currentUser.uid);
-
-        matchStatus.textContent = "✅ Lobby created! Redirecting...";
-        window.location.href = `battle.html?matchId=${matchId}`;
-      } catch (err) {
-        console.error("Failed to create lobby:", err);
-        alert("Failed to create lobby.");
-        matchStatus.textContent = "";
-      }
-    };
 
     function logout() {
       auth.signOut().then(() => {
@@ -231,6 +101,135 @@
     function goToDeck() {
       window.location.href = "deck.html";
     }
+
+    // Listen to lobby doc for status changes to redirect to battle
+    function listenToLobby(lobbyId) {
+      if (lobbyUnsubscribe) {
+        lobbyUnsubscribe();
+      }
+      lobbyUnsubscribe = db.collection("lobbies").doc(lobbyId)
+        .onSnapshot(doc => {
+          const data = doc.data();
+          if (!data) {
+            matchStatus.textContent = "Lobby was deleted.";
+            resetSearchUI();
+            return;
+          }
+          if (data.status === "full" && data.players.includes(currentUser.uid)) {
+            matchStatus.textContent = "✅ Match ready! Redirecting...";
+            // Save match info for battle.html
+            localStorage.setItem("matchId", doc.id);
+            localStorage.setItem("matchCreator", data.creator);
+            setTimeout(() => {
+              window.location.href = `battle.html?matchId=${doc.id}&matchCreator=${data.creator}`;
+            }, 1000);
+          } else if (data.status === "waiting") {
+            matchStatus.textContent = "Waiting for opponent to join...";
+          }
+        });
+    }
+
+    // Reset UI after cancelling or error
+    function resetSearchUI() {
+      battleButton.disabled = false;
+      cancelSearchButton.style.display = "none";
+      currentLobbyId = null;
+      if (lobbyUnsubscribe) {
+        lobbyUnsubscribe();
+        lobbyUnsubscribe = null;
+      }
+    }
+
+    async function findOrCreateLobby() {
+      if (!currentUser) return;
+
+      matchStatus.textContent = "🔍 Searching for an opponent...";
+
+      // Query for existing lobby that is waiting and NOT created by current user
+      const waitingLobbiesQuery = await db.collection("lobbies")
+        .where("status", "==", "waiting")
+        .where("creator", "!=", currentUser.uid)
+        .limit(1)
+        .get();
+
+      if (!waitingLobbiesQuery.empty) {
+        // Join existing lobby
+        const lobbyDoc = waitingLobbiesQuery.docs[0];
+        const lobbyData = lobbyDoc.data();
+
+        // Add current user as second player if not already in players array
+        let players = lobbyData.players || [];
+        if (!players.includes(currentUser.uid)) {
+          players.push(currentUser.uid);
+        }
+
+        await db.collection("lobbies").doc(lobbyDoc.id).update({
+          players: players,
+          status: "full"
+        });
+
+        currentLobbyId = lobbyDoc.id;
+        matchStatus.textContent = "✅ Joined existing lobby. Waiting for battle to start...";
+        listenToLobby(currentLobbyId);
+      } else {
+        // Create new lobby
+        const newLobbyRef = db.collection("lobbies").doc();
+
+        await newLobbyRef.set({
+          creator: currentUser.uid,
+          players: [currentUser.uid],
+          status: "waiting",
+          createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+
+        currentLobbyId = newLobbyRef.id;
+        matchStatus.textContent = "✅ Created new lobby. Waiting for opponent...";
+        listenToLobby(currentLobbyId);
+      }
+    }
+
+    battleButton.addEventListener("click", async () => {
+      battleButton.disabled = true;
+      cancelSearchButton.style.display = "inline-block";
+
+      await findOrCreateLobby();
+    });
+
+    async function cancelSearch() {
+      if (!currentUser) return;
+
+      if (currentLobbyId) {
+        // Remove player from lobby
+        const lobbyRef = db.collection("lobbies").doc(currentLobbyId);
+        const lobbySnap = await lobbyRef.get();
+
+        if (lobbySnap.exists) {
+          const data = lobbySnap.data();
+          let players = data.players || [];
+
+          // Remove current user
+          players = players.filter(p => p !== currentUser.uid);
+
+          if (players.length === 0) {
+            // No players left, delete lobby
+            await lobbyRef.delete();
+          } else {
+            // Update players list and status
+            await lobbyRef.update({
+              players: players,
+              status: players.length === 1 ? "waiting" : "full"
+            });
+          }
+        }
+        currentLobbyId = null;
+      }
+
+      resetSearchUI();
+      matchStatus.textContent = "❌ Matchmaking cancelled.";
+    }
+
+    cancelSearchButton.onclick = cancelSearch;
+
   </script>
 </body>
 </html>
