@@ -45,10 +45,10 @@
 
   <p id="matchStatus"></p>
 
-  <!-- Firebase SDKs -->
-  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+ <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 
 <script>
   const firebaseConfig = {
@@ -64,6 +64,7 @@
   firebase.initializeApp(firebaseConfig);
   const auth = firebase.auth();
   const db = firebase.firestore();
+  const rtdb = firebase.database();
 
   const usernameEl = document.getElementById("username");
   const coinsEl = document.getElementById("coins");
@@ -71,14 +72,12 @@
   const cancelSearchButton = document.getElementById("cancelSearchButton");
   const matchStatus = document.getElementById("matchStatus");
 
-  let matchmakingInterval = null;
-  let matchmakingTimeout = null;
-  let currentLobbyId = null;
-  let createdLobby = false;
+  let cancelLobbyRef = null;
+  let cancelTimeout = null;
 
   function updateOnlineStatus() {
     if (!navigator.onLine) {
-      matchStatus.textContent = "⚠️ You are offline. Check your internet connection.";
+      matchStatus.textContent = "⚠️ You are offline.";
       battleButton.disabled = true;
     } else {
       matchStatus.textContent = "";
@@ -115,7 +114,7 @@
       }
     } catch (error) {
       console.error("Error fetching user data:", error);
-      usernameEl.textContent = "⚠️ Unable to load username";
+      usernameEl.textContent = "⚠️ Failed to load username";
       coinsEl.textContent = "";
     }
   });
@@ -131,106 +130,92 @@
   }
 
   cancelSearchButton.onclick = async () => {
-    await clearMatchmaking("❌ Matchmaking cancelled.");
+    if (cancelLobbyRef) {
+      cancelLobbyRef.off();
+      await cancelLobbyRef.remove();
+      cancelLobbyRef = null;
+    }
+    if (cancelTimeout) {
+      clearTimeout(cancelTimeout);
+      cancelTimeout = null;
+    }
+    matchStatus.textContent = "❌ Matchmaking cancelled.";
+    battleButton.disabled = false;
+    cancelSearchButton.style.display = "none";
   };
 
   battleButton.addEventListener("click", async () => {
     battleButton.disabled = true;
     cancelSearchButton.style.display = "inline-block";
-    matchStatus.textContent = "🔍 Searching for an opponent...";
+    matchStatus.textContent = "🔍 Searching for opponent...";
 
     try {
       const user = auth.currentUser;
       if (!user) throw new Error("User not logged in");
 
-      const lobbiesRef = db.collection("lobbies");
+      const lobbyRef = rtdb.ref("lobbies");
 
-      const openLobbySnapshot = await lobbiesRef
-        .where("ready", "==", false)
-        .limit(1)
-        .get();
+      const snapshot = await lobbyRef.orderByChild("ready").equalTo(false).limitToFirst(1).get();
+      let joined = false;
 
-      let lobbyId = null;
-
-      if (!openLobbySnapshot.empty) {
-        const lobbyDoc = openLobbySnapshot.docs[0];
-        const data = lobbyDoc.data();
-
-        if (data.players.length === 1 && data.players[0] !== user.uid) {
-          await lobbyDoc.ref.update({
-            players: [...data.players, user.uid],
-            ready: true
-          });
-          lobbyId = lobbyDoc.id;
-          createdLobby = false;
-          currentLobbyId = lobbyId;
-        }
+      if (snapshot.exists()) {
+        snapshot.forEach(async (child) => {
+          const data = child.val();
+          if (data.players && data.players.length === 1 && data.players[0] !== user.uid) {
+            const updateRef = lobbyRef.child(child.key);
+            await updateRef.update({
+              players: [...data.players, user.uid],
+              ready: true
+            });
+            localStorage.setItem("lobbyId", child.key);
+            joined = true;
+            matchStatus.textContent = "✅ Match found!";
+            setTimeout(() => window.location.href = "battle.html", 1000);
+          }
+        });
       }
 
-      if (!lobbyId) {
-        const newLobby = await lobbiesRef.add({
+      if (!joined) {
+        const newLobbyRef = lobbyRef.push();
+        const lobbyId = newLobbyRef.key;
+        await newLobbyRef.set({
           players: [user.uid],
           ready: false,
-          createdAt: firebase.firestore.FieldValue.serverTimestamp()
+          createdAt: Date.now()
         });
-        lobbyId = newLobby.id;
-        createdLobby = true;
-        currentLobbyId = lobbyId;
-      }
 
-      localStorage.setItem("lobbyId", lobbyId);
+        localStorage.setItem("lobbyId", lobbyId);
+        cancelLobbyRef = newLobbyRef;
 
-      matchmakingInterval = setInterval(async () => {
-        try {
-          const lobbyDoc = await db.collection("lobbies").doc(lobbyId).get();
-          const lobbyData = lobbyDoc.data();
-          if (lobbyData && lobbyData.ready && lobbyData.players.length === 2) {
-            await clearMatchmaking("✅ Match found! Starting battle...", false);
-            setTimeout(() => {
-              window.location.href = "battle.html";
-            }, 1000);
+        // Timeout if no one joins
+        cancelTimeout = setTimeout(async () => {
+          newLobbyRef.off();
+          await newLobbyRef.remove();
+          cancelLobbyRef = null;
+          matchStatus.textContent = "❌ No match found. Try again.";
+          battleButton.disabled = false;
+          cancelSearchButton.style.display = "none";
+        }, 30000);
+
+        // Listen for match ready
+        newLobbyRef.on("value", (snap) => {
+          const data = snap.val();
+          if (data && data.ready && data.players.length === 2) {
+            clearTimeout(cancelTimeout);
+            newLobbyRef.off();
+            cancelLobbyRef = null;
+            matchStatus.textContent = "✅ Match found!";
+            setTimeout(() => window.location.href = "battle.html", 1000);
           }
-        } catch (err) {
-          console.error("Polling error:", err);
-        }
-      }, 3000);
-
-      matchmakingTimeout = setTimeout(async () => {
-        await clearMatchmaking("❌ No opponents found. Please try again.");
-      }, 30000);
-
+        });
+      }
     } catch (err) {
       console.error("Matchmaking error:", err);
-      if (err.code === 'resource-exhausted') {
-        matchStatus.textContent = "⚠️ Firestore quota exceeded. Try again later.";
-      } else {
-        matchStatus.textContent = "❌ Failed to find battle. Try again.";
-      }
+      matchStatus.textContent = "⚠️ Matchmaking failed. Try again.";
       battleButton.disabled = false;
       cancelSearchButton.style.display = "none";
     }
   });
-
-  async function clearMatchmaking(message, deleteLobby = true) {
-    if (matchmakingInterval) clearInterval(matchmakingInterval);
-    if (matchmakingTimeout) clearTimeout(matchmakingTimeout);
-    matchmakingInterval = null;
-    matchmakingTimeout = null;
-
-    if (deleteLobby && createdLobby && currentLobbyId) {
-      try {
-        await db.collection("lobbies").doc(currentLobbyId).delete();
-      } catch (err) {
-        console.error("Error deleting lobby:", err);
-      }
-    }
-
-    createdLobby = false;
-    currentLobbyId = null;
-    matchStatus.textContent = message;
-    battleButton.disabled = false;
-    cancelSearchButton.style.display = "none";
-  }
 </script>
 
 </body>
