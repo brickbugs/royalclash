@@ -75,6 +75,7 @@
     const matchStatus = document.getElementById("matchStatus");
 
     let matchListener = null;
+    let matchmakingTimeout = null;
 
     auth.onAuthStateChanged(async (user) => {
       if (!user) {
@@ -82,11 +83,16 @@
         return;
       }
 
-      const doc = await db.collection("players").doc(user.uid).get();
-      const data = doc.data();
-
-      usernameEl.textContent = `👤 Username: ${data?.username ?? "Unknown"}`;
-      coinsEl.textContent = `💰 Coins: ${data?.coins ?? 0}`;
+      try {
+        const doc = await db.collection("players").doc(user.uid).get();
+        const data = doc.data();
+        usernameEl.textContent = `👤 Username: ${data?.username ?? "Unknown"}`;
+        coinsEl.textContent = `💰 Coins: ${data?.coins ?? 0}`;
+      } catch(e) {
+        console.error("Error fetching user data:", e);
+        usernameEl.textContent = "⚠️ Unable to load username";
+        coinsEl.textContent = "";
+      }
     });
 
     function logout() {
@@ -100,12 +106,23 @@
     }
 
     function startMatchListener(uid) {
+      if (matchListener) {
+        matchListener.off();
+        matchListener = null;
+      }
       matchListener = rtdb.ref(`/matches/${uid}`);
       matchListener.on("value", (snapshot) => {
         const matchData = snapshot.val();
         if (matchData && matchData.matchId) {
           matchStatus.textContent = "✅ Match found! Redirecting...";
-          rtdb.ref(`/matches/${uid}`).remove(); // Clean up
+          // Remove listener and cleanup queue entry
+          if (matchListener) {
+            matchListener.off();
+            matchListener = null;
+          }
+          rtdb.ref(`/matchmakingQueue/${uid}`).remove().catch(console.error);
+          rtdb.ref(`/matches/${uid}`).remove().catch(console.error);
+          clearTimeout(matchmakingTimeout);
           window.location.href = `battle.html?matchId=${matchData.matchId}`;
         }
       });
@@ -116,47 +133,30 @@
       const snapshot = await queueRef.once("value");
       const queue = snapshot.val() || {};
 
+      // Remove self from queue before searching to avoid self-match
+      await rtdb.ref(`/matchmakingQueue/${uid}`).remove();
+
+      // Find another player in queue excluding self
       const otherUid = Object.keys(queue).find(id => id !== uid);
 
       if (otherUid) {
-        // Match found
+        // Create a unique match ID
         const matchId = rtdb.ref().push().key;
+
+        // Save match data for both players
         await Promise.all([
           rtdb.ref(`/matches/${uid}`).set({ matchId, opponent: otherUid }),
           rtdb.ref(`/matches/${otherUid}`).set({ matchId, opponent: uid }),
           rtdb.ref(`/matchmakingQueue/${otherUid}`).remove()
         ]);
+
         return { matched: true, matchId };
       } else {
-        // No match, add self to queue
+        // No opponent, add self to queue
         await rtdb.ref(`/matchmakingQueue/${uid}`).set(true);
         return { matched: false };
       }
     }
-
-    battleButton.addEventListener("click", async () => {
-      battleButton.disabled = true;
-      cancelSearchButton.style.display = "inline-block";
-      matchStatus.textContent = "🔍 Searching for an opponent...";
-
-      const user = auth.currentUser;
-      if (!user) return;
-
-      const result = await joinQueue(user.uid);
-
-      if (result.matched) {
-        matchStatus.textContent = "✅ Match found! Redirecting...";
-        window.location.href = `battle.html?matchId=${result.matchId}`;
-      } else {
-        startMatchListener(user.uid);
-
-        // Timeout after 30s
-        setTimeout(() => {
-          cancelSearch();
-          matchStatus.textContent = "❌ No opponents found.";
-        }, 30000);
-      }
-    });
 
     async function cancelSearch() {
       const user = auth.currentUser;
@@ -166,12 +166,55 @@
         matchListener.off();
         matchListener = null;
       }
+      clearTimeout(matchmakingTimeout);
 
-      await rtdb.ref(`/matchmakingQueue/${user.uid}`).remove();
+      try {
+        await rtdb.ref(`/matchmakingQueue/${user.uid}`).remove();
+        await rtdb.ref(`/matches/${user.uid}`).remove();
+      } catch(e) {
+        console.error("Error during cancel search cleanup:", e);
+      }
+
       matchStatus.textContent = "❌ Matchmaking cancelled.";
       battleButton.disabled = false;
       cancelSearchButton.style.display = "none";
     }
+
+    battleButton.addEventListener("click", async () => {
+      battleButton.disabled = true;
+      cancelSearchButton.style.display = "inline-block";
+      matchStatus.textContent = "🔍 Searching for an opponent...";
+
+      const user = auth.currentUser;
+      if (!user) {
+        matchStatus.textContent = "❌ Not logged in.";
+        battleButton.disabled = false;
+        cancelSearchButton.style.display = "none";
+        return;
+      }
+
+      try {
+        const result = await joinQueue(user.uid);
+
+        if (result.matched) {
+          matchStatus.textContent = "✅ Match found! Redirecting...";
+          window.location.href = `battle.html?matchId=${result.matchId}`;
+        } else {
+          startMatchListener(user.uid);
+
+          // Timeout matchmaking after 30 seconds
+          matchmakingTimeout = setTimeout(() => {
+            cancelSearch();
+            matchStatus.textContent = "❌ No opponents found.";
+          }, 30000);
+        }
+      } catch (e) {
+        console.error("Matchmaking error:", e);
+        matchStatus.textContent = "❌ Failed to find battle. Try again.";
+        battleButton.disabled = false;
+        cancelSearchButton.style.display = "none";
+      }
+    });
 
     cancelSearchButton.onclick = cancelSearch;
   </script>
