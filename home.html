@@ -10,13 +10,6 @@
       text-align: center;
       padding: 40px;
     }
-    h1 {
-      margin-bottom: 20px;
-    }
-    #user-info {
-      margin-top: 20px;
-      font-size: 18px;
-    }
     button {
       padding: 10px 20px;
       margin: 10px;
@@ -31,6 +24,7 @@
   </style>
 </head>
 <body>
+
   <h1>Welcome to Clash Royale Clone!</h1>
 
   <div id="user-info">
@@ -45,181 +39,185 @@
 
   <p id="matchStatus"></p>
 
- <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+  <!-- Firebase SDK scripts -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 
-<script>
- const firebaseConfig = {
-  apiKey: "AIzaSyADqsChcYfhT_bAlQ1VWkrlga-oTJViz7U",
-  authDomain: "clashroyaleclone-ae764.firebaseapp.com",
-  projectId: "clashroyaleclone-ae764",
-  storageBucket: "clashroyaleclone-ae764.appspot.com",
-  messagingSenderId: "938364278081",
-  appId: "1:938364278081:web:1c214bd66caef6d7567dc0",
-  measurementId: "G-PT2GPP0JF5",
-  databaseURL: "https://clashroyaleclone-ae764-default-rtdb.firebaseio.com"
-};
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyADqsChcYfhT_bAlQ1VWkrlga-oTJViz7U",
+      authDomain: "clashroyaleclone-ae764.firebaseapp.com",
+      projectId: "clashroyaleclone-ae764",
+      storageBucket: "clashroyaleclone-ae764.appspot.com",
+      messagingSenderId: "938364278081",
+      appId: "1:938364278081:web:1c214bd66caef6d7567dc0",
+      measurementId: "G-PT2GPP0JF5",
+      databaseURL: "https://clashroyaleclone-ae764-default-rtdb.firebaseio.com"
+    };
 
+    firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+    const db = firebase.firestore();
+    const rtdb = firebase.database();
 
+    const usernameEl = document.getElementById("username");
+    const coinsEl = document.getElementById("coins");
+    const battleButton = document.getElementById("battleButton");
+    const cancelSearchButton = document.getElementById("cancelSearchButton");
+    const matchStatus = document.getElementById("matchStatus");
 
-  firebase.initializeApp(firebaseConfig);
-  const auth = firebase.auth();
-  const db = firebase.firestore();
-  const rtdb = firebase.database();
+    let cancelLobbyRef = null;
+    let cancelTimeout = null;
 
-  const usernameEl = document.getElementById("username");
-  const coinsEl = document.getElementById("coins");
-  const battleButton = document.getElementById("battleButton");
-  const cancelSearchButton = document.getElementById("cancelSearchButton");
-  const matchStatus = document.getElementById("matchStatus");
-
-  let cancelLobbyRef = null;
-  let cancelTimeout = null;
-
-  function updateOnlineStatus() {
-    if (!navigator.onLine) {
-      matchStatus.textContent = "⚠️ You are offline.";
-      battleButton.disabled = true;
-    } else {
-      matchStatus.textContent = "";
-      battleButton.disabled = false;
+    // Check online status
+    function updateOnlineStatus() {
+      if (!navigator.onLine) {
+        matchStatus.textContent = "⚠️ You are offline.";
+        battleButton.disabled = true;
+      } else {
+        matchStatus.textContent = "";
+        battleButton.disabled = false;
+      }
     }
-  }
+    window.addEventListener('offline', updateOnlineStatus);
+    window.addEventListener('online', updateOnlineStatus);
+    updateOnlineStatus();
 
-  window.addEventListener('offline', updateOnlineStatus);
-  window.addEventListener('online', updateOnlineStatus);
-  updateOnlineStatus();
-
-  auth.onAuthStateChanged(async (user) => {
-    if (!user) {
-      window.location.href = "index.html";
-      return;
-    }
-
-    try {
-      const doc = await db.collection("players").doc(user.uid).get();
-      const data = doc.data();
-
-      if (!data) {
-        usernameEl.textContent = "⚠️ No user data found";
-        coinsEl.textContent = "";
+    // Auth state and user data fetch
+    auth.onAuthStateChanged(async (user) => {
+      if (!user) {
+        window.location.href = "index.html";
         return;
       }
+      try {
+        const doc = await db.collection("players").doc(user.uid).get();
+        const data = doc.data();
 
-      usernameEl.textContent = `👤 Username: ${data.username}`;
-      coinsEl.textContent = `💰 Coins: ${data.coins ?? 0}`;
+        if (!data) {
+          usernameEl.textContent = "⚠️ No user data found";
+          coinsEl.textContent = "";
+          return;
+        }
 
-      if (data.coins === undefined) {
-        await db.collection("players").doc(user.uid).update({ coins: 100 });
-        coinsEl.textContent = "💰 Coins: 100";
+        usernameEl.textContent = `👤 Username: ${data.username}`;
+        coinsEl.textContent = `💰 Coins: ${data.coins ?? 0}`;
+
+        if (data.coins === undefined) {
+          await db.collection("players").doc(user.uid).update({ coins: 100 });
+          coinsEl.textContent = "💰 Coins: 100";
+        }
+      } catch (error) {
+        console.error("Error fetching user data:", error);
+        usernameEl.textContent = "⚠️ Failed to load username";
+        coinsEl.textContent = "";
       }
-    } catch (error) {
-      console.error("Error fetching user data:", error);
-      usernameEl.textContent = "⚠️ Failed to load username";
-      coinsEl.textContent = "";
-    }
-  });
-
-  function logout() {
-    auth.signOut().then(() => {
-      window.location.href = "index.html";
     });
-  }
 
-  function goToDeck() {
-    window.location.href = "deck.html";
-  }
-
-  cancelSearchButton.onclick = async () => {
-    if (cancelLobbyRef) {
-      cancelLobbyRef.off();
-      await cancelLobbyRef.remove();
-      cancelLobbyRef = null;
+    function logout() {
+      auth.signOut().then(() => {
+        window.location.href = "index.html";
+      });
     }
-    if (cancelTimeout) {
-      clearTimeout(cancelTimeout);
-      cancelTimeout = null;
+
+    function goToDeck() {
+      window.location.href = "deck.html";
     }
-    matchStatus.textContent = "❌ Matchmaking cancelled.";
-    battleButton.disabled = false;
-    cancelSearchButton.style.display = "none";
-  };
 
-  battleButton.addEventListener("click", async () => {
-    battleButton.disabled = true;
-    cancelSearchButton.style.display = "inline-block";
-    matchStatus.textContent = "🔍 Searching for opponent...";
-
-    try {
-      const user = auth.currentUser;
-      if (!user) throw new Error("User not logged in");
-
-      const lobbyRef = rtdb.ref("lobbies");
-
-      const snapshot = await lobbyRef.orderByChild("ready").equalTo(false).limitToFirst(1).once("value");
-      let joined = false;
-
-      if (snapshot.exists()) {
-        snapshot.forEach(async (child) => {
-          const data = child.val();
-          if (data.players && data.players.length === 1 && data.players[0] !== user.uid) {
-            const updateRef = lobbyRef.child(child.key);
-            await updateRef.update({
-              players: [...data.players, user.uid],
-              ready: true
-            });
-            localStorage.setItem("lobbyId", child.key);
-            joined = true;
-            matchStatus.textContent = "✅ Match found!";
-            setTimeout(() => window.location.href = "battle.html", 1000);
-          }
-        });
+    // Cancel matchmaking
+    cancelSearchButton.onclick = async () => {
+      if (cancelLobbyRef) {
+        cancelLobbyRef.off();
+        await cancelLobbyRef.remove();
+        cancelLobbyRef = null;
       }
-
-      if (!joined) {
-        const newLobbyRef = lobbyRef.push();
-        const lobbyId = newLobbyRef.key;
-        await newLobbyRef.set({
-          players: [user.uid],
-          ready: false,
-          createdAt: Date.now()
-        });
-
-        localStorage.setItem("lobbyId", lobbyId);
-        cancelLobbyRef = newLobbyRef;
-
-        // Timeout if no one joins
-        cancelTimeout = setTimeout(async () => {
-          newLobbyRef.off();
-          await newLobbyRef.remove();
-          cancelLobbyRef = null;
-          matchStatus.textContent = "❌ No match found. Try again.";
-          battleButton.disabled = false;
-          cancelSearchButton.style.display = "none";
-        }, 30000);
-
-        // Listen for match ready
-        newLobbyRef.on("value", (snap) => {
-          const data = snap.val();
-          if (data && data.ready && data.players.length === 2) {
-            clearTimeout(cancelTimeout);
-            newLobbyRef.off();
-            cancelLobbyRef = null;
-            matchStatus.textContent = "✅ Match found!";
-            setTimeout(() => window.location.href = "battle.html", 1000);
-          }
-        });
+      if (cancelTimeout) {
+        clearTimeout(cancelTimeout);
+        cancelTimeout = null;
       }
-    } catch (err) {
-      console.error("Matchmaking error:", err);
-      matchStatus.textContent = "⚠️ Matchmaking failed. Try again.";
+      matchStatus.textContent = "❌ Matchmaking cancelled.";
       battleButton.disabled = false;
       cancelSearchButton.style.display = "none";
-    }
-  });
-</script>
+    };
+
+    battleButton.addEventListener("click", async () => {
+      battleButton.disabled = true;
+      cancelSearchButton.style.display = "inline-block";
+      matchStatus.textContent = "🔍 Searching for opponent...";
+
+      try {
+        const user = auth.currentUser;
+        if (!user) throw new Error("User not logged in");
+
+        const lobbyRef = rtdb.ref("lobbies");
+
+        // Find existing lobby with 1 player waiting
+        const snapshot = await lobbyRef.orderByChild("ready").equalTo(false).limitToFirst(1).once("value");
+
+        let joined = false;
+
+        if (snapshot.exists()) {
+          snapshot.forEach(async (child) => {
+            const data = child.val();
+            if (data.players && data.players.length === 1 && data.players[0] !== user.uid) {
+              const updateRef = lobbyRef.child(child.key);
+              await updateRef.update({
+                players: [...data.players, user.uid],
+                ready: true
+              });
+              localStorage.setItem("lobbyId", child.key);
+              joined = true;
+              matchStatus.textContent = "✅ Match found!";
+              setTimeout(() => window.location.href = "battle.html", 1000);
+            }
+          });
+        }
+
+        // If no lobby found, create one and wait
+        if (!joined) {
+          const newLobbyRef = lobbyRef.push();
+          const lobbyId = newLobbyRef.key;
+          await newLobbyRef.set({
+            players: [user.uid],
+            ready: false,
+            createdAt: Date.now()
+          });
+
+          localStorage.setItem("lobbyId", lobbyId);
+          cancelLobbyRef = newLobbyRef;
+
+          // Timeout if no opponent joins within 30 seconds
+          cancelTimeout = setTimeout(async () => {
+            newLobbyRef.off();
+            await newLobbyRef.remove();
+            cancelLobbyRef = null;
+            matchStatus.textContent = "❌ No match found. Try again.";
+            battleButton.disabled = false;
+            cancelSearchButton.style.display = "none";
+          }, 30000);
+
+          // Listen for lobby updates for a match
+          newLobbyRef.on("value", (snap) => {
+            const data = snap.val();
+            if (data && data.ready && data.players.length === 2) {
+              clearTimeout(cancelTimeout);
+              newLobbyRef.off();
+              cancelLobbyRef = null;
+              matchStatus.textContent = "✅ Match found!";
+              setTimeout(() => window.location.href = "battle.html", 1000);
+            }
+          });
+        }
+
+      } catch (err) {
+        console.error("Matchmaking error:", err);
+        matchStatus.textContent = "⚠️ Matchmaking failed. Try again.";
+        battleButton.disabled = false;
+        cancelSearchButton.style.display = "none";
+      }
+    });
+  </script>
 
 </body>
 </html>
