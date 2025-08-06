@@ -109,12 +109,12 @@
         return;
       }
 
-      usernameEl.textContent = 👤 Username: ${data.username};
-      coinsEl.textContent = 💰 Coins: ${data.coins ?? 0};
+      usernameEl.textContent = `👤 Username: ${data.username}`;
+      coinsEl.textContent = `💰 Coins: ${data.coins ?? 0}`;
 
       if (data.coins === undefined) {
         await db.collection("players").doc(user.uid).update({ coins: 100 });
-        coinsEl.textContent = "💰 Coins: 100";
+        coinsEl.textContent = `💰 Coins: 100`;
       }
     } catch (error) {
       console.error("Error fetching user data:", error);
@@ -254,6 +254,6 @@
       cancelSearchButton.style.display = "none";
     }
   });
-</script>
+  </script>
 </body>
 </html>
