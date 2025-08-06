@@ -52,157 +52,150 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 
   <script>
-  const firebaseConfig = {
-    apiKey: "AIzaSyADqsChcYfhT_bAlQ1VWkrlga-oTJViz7U",
-    authDomain: "clashroyaleclone-ae764.firebaseapp.com",
-    projectId: "clashroyaleclone-ae764",
-    storageBucket: "clashroyaleclone-ae764.appspot.com",
-    messagingSenderId: "938364278081",
-    appId: "1:938364278081:web:1c214bd66caef6d7567dc0",
-    measurementId: "G-PT2GPP0JF5",
-    databaseURL: "https://clashroyaleclone-ae764-default-rtdb.firebaseio.com"
-  };
+    const firebaseConfig = {
+      apiKey: "AIzaSyADqsChcYfhT_bAlQ1VWkrlga-oTJViz7U",
+      authDomain: "clashroyaleclone-ae764.firebaseapp.com",
+      projectId: "clashroyaleclone-ae764",
+      storageBucket: "clashroyaleclone-ae764.appspot.com",
+      messagingSenderId: "938364278081",
+      appId: "1:938364278081:web:1c214bd66caef6d7567dc0",
+      measurementId: "G-PT2GPP0JF5",
+      databaseURL: "https://clashroyaleclone-ae764-default-rtdb.firebaseio.com"
+    };
 
-  firebase.initializeApp(firebaseConfig);
+    firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+    const db = firebase.firestore();
+    const rtdb = firebase.database();
 
-  const auth = firebase.auth();
-  const db = firebase.firestore();
-  const rtdb = firebase.database();
+    const usernameEl = document.getElementById("username");
+    const coinsEl = document.getElementById("coins");
+    const battleButton = document.getElementById("battleButton");
+    const cancelSearchButton = document.getElementById("cancelSearchButton");
+    const matchStatus = document.getElementById("matchStatus");
 
-  const usernameEl = document.getElementById("username");
-  const coinsEl = document.getElementById("coins");
-  const battleButton = document.getElementById("battleButton");
-  const cancelSearchButton = document.getElementById("cancelSearchButton");
-  const matchStatus = document.getElementById("matchStatus");
+    let matchListener = null;
 
-  let matchListener = null;
+    auth.onAuthStateChanged(async (user) => {
+      if (!user) {
+        window.location.href = "index.html";
+        return;
+      }
 
-  auth.onAuthStateChanged(async (user) => {
-    if (!user) {
-      window.location.href = "index.html";
-      return;
+      const doc = await db.collection("players").doc(user.uid).get();
+      const data = doc.data();
+
+      usernameEl.textContent = `👤 Username: ${data?.username ?? "Unknown"}`;
+      coinsEl.textContent = `💰 Coins: ${data?.coins ?? 0}`;
+    });
+
+    function logout() {
+      auth.signOut().then(() => {
+        window.location.href = "index.html";
+      });
     }
 
-    // Load player data from Firestore
-    const doc = await db.collection("players").doc(user.uid).get();
-    const data = doc.data();
+    function goToDeck() {
+      window.location.href = "deck.html";
+    }
 
-    usernameEl.textContent = `👤 Username: ${data?.username ?? "Unknown"}`;
-    coinsEl.textContent = `💰 Coins: ${data?.coins ?? 0}`;
-  });
+    function startMatchListener(uid) {
+      matchListener = rtdb.ref(`/matches/${uid}`);
+      matchListener.on("value", (snapshot) => {
+        const matchData = snapshot.val();
+        if (matchData && matchData.matchId && matchData.matchCreator) {
+          matchStatus.textContent = "✅ Match found! Redirecting...";
+          // Store match info locally for battle.html
+          localStorage.setItem("matchId", matchData.matchId);
+          localStorage.setItem("matchCreator", matchData.matchCreator);
+          rtdb.ref(`/matches/${uid}`).remove(); // Clean up after reading
+          window.location.href = `battle.html?matchId=${matchData.matchId}`;
+        }
+      });
+    }
 
-  function logout() {
-    auth.signOut().then(() => {
-      window.location.href = "index.html";
-    });
-  }
+    async function joinQueue(uid) {
+      const queueRef = rtdb.ref("/matchmakingQueue");
+      const snapshot = await queueRef.once("value");
+      const queue = snapshot.val() || {};
 
-  function goToDeck() {
-    window.location.href = "deck.html";
-  }
+      // Find other player waiting
+      const otherUid = Object.keys(queue).find(id => id !== uid);
 
-  // Clear localStorage match info on page load (prevent stale data)
-  localStorage.removeItem("matchId");
-  localStorage.removeItem("matchCreator");
+      if (otherUid) {
+        // Determine matchCreator to keep consistent ordering (e.g. lexicographically)
+        const matchCreator = uid < otherUid ? uid : otherUid;
 
-  // Listen for incoming match assignment from RTDB
-  function startMatchListener(uid) {
-    if (matchListener) matchListener.off();
-    matchListener = rtdb.ref(`/matches/${uid}`);
-    matchListener.on("value", (snapshot) => {
-      const matchData = snapshot.val();
-      if (matchData && matchData.matchId && matchData.matchCreator) {
+        // Generate unique matchId
+        const matchId = rtdb.ref().push().key;
+
+        // Create RTDB match entries for both players
+        await Promise.all([
+          rtdb.ref(`/matches/${uid}`).set({ matchId, matchCreator, opponent: otherUid }),
+          rtdb.ref(`/matches/${otherUid}`).set({ matchId, matchCreator, opponent: uid }),
+          rtdb.ref(`/matchmakingQueue/${otherUid}`).remove()
+        ]);
+
+        // Create Firestore lobby document for the match
+        await db.collection("lobbies")
+                .doc(matchCreator)
+                .collection("matches")
+                .doc(matchId)
+                .set({
+                  players: [uid, otherUid],
+                  createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
+
+        return { matched: true, matchId, matchCreator };
+      } else {
+        // No match found, add self to queue
+        await rtdb.ref(`/matchmakingQueue/${uid}`).set(true);
+        return { matched: false };
+      }
+    }
+
+    battleButton.addEventListener("click", async () => {
+      battleButton.disabled = true;
+      cancelSearchButton.style.display = "inline-block";
+      matchStatus.textContent = "🔍 Searching for an opponent...";
+
+      const user = auth.currentUser;
+      if (!user) return;
+
+      const result = await joinQueue(user.uid);
+
+      if (result.matched) {
         matchStatus.textContent = "✅ Match found! Redirecting...";
+        localStorage.setItem("matchId", result.matchId);
+        localStorage.setItem("matchCreator", result.matchCreator);
+        window.location.href = `battle.html?matchId=${result.matchId}`;
+      } else {
+        startMatchListener(user.uid);
 
-        // Save match info for battle.html to load
-        localStorage.setItem("matchId", matchData.matchId);
-        localStorage.setItem("matchCreator", matchData.matchCreator);
-
-        // Clean up match data for this user
-        rtdb.ref(`/matches/${uid}`).remove();
-
-        // Redirect to battle page with query param (optional)
-        window.location.href = `battle.html?matchId=${matchData.matchId}`;
+        // Timeout after 30s if no match found
+        setTimeout(() => {
+          cancelSearch();
+          matchStatus.textContent = "❌ No opponents found.";
+        }, 30000);
       }
     });
-  }
 
-  async function joinQueue(uid) {
-    const queueRef = rtdb.ref("/matchmakingQueue");
-    const snapshot = await queueRef.once("value");
-    const queue = snapshot.val() || {};
+    async function cancelSearch() {
+      const user = auth.currentUser;
+      if (!user) return;
 
-    // Look for opponent waiting in queue who is NOT this uid
-    const otherUid = Object.keys(queue).find(id => id !== uid);
+      if (matchListener) {
+        matchListener.off();
+        matchListener = null;
+      }
 
-    if (otherUid) {
-      // Match found: create a unique matchId
-      const matchId = rtdb.ref().push().key;
-
-      // Determine match creator (we'll assign player with lex smaller uid as creator for consistency)
-      const matchCreator = uid < otherUid ? uid : otherUid;
-
-      // Create matches entries for both players with matchId and matchCreator
-      await Promise.all([
-        rtdb.ref(`/matches/${uid}`).set({ matchId, matchCreator, opponent: otherUid }),
-        rtdb.ref(`/matches/${otherUid}`).set({ matchId, matchCreator, opponent: uid }),
-        rtdb.ref(`/matchmakingQueue/${otherUid}`).remove()
-      ]);
-      return { matched: true, matchId, matchCreator };
-    } else {
-      // No opponent, add self to matchmaking queue
-      await rtdb.ref(`/matchmakingQueue/${uid}`).set(true);
-      return { matched: false };
-    }
-  }
-
-  battleButton.addEventListener("click", async () => {
-    battleButton.disabled = true;
-    cancelSearchButton.style.display = "inline-block";
-    matchStatus.textContent = "🔍 Searching for an opponent...";
-
-    const user = auth.currentUser;
-    if (!user) return;
-
-    const result = await joinQueue(user.uid);
-
-    if (result.matched) {
-      // Save match info locally and redirect immediately
-      localStorage.setItem("matchId", result.matchId);
-      localStorage.setItem("matchCreator", result.matchCreator);
-
-      matchStatus.textContent = "✅ Match found! Redirecting...";
-      window.location.href = `battle.html?matchId=${result.matchId}`;
-    } else {
-      // No immediate match, listen for matchmaking result
-      startMatchListener(user.uid);
-
-      // Timeout after 30 seconds of no match
-      setTimeout(() => {
-        cancelSearch();
-        matchStatus.textContent = "❌ No opponents found.";
-      }, 30000);
-    }
-  });
-
-  async function cancelSearch() {
-    const user = auth.currentUser;
-    if (!user) return;
-
-    if (matchListener) {
-      matchListener.off();
-      matchListener = null;
+      await rtdb.ref(`/matchmakingQueue/${user.uid}`).remove();
+      matchStatus.textContent = "❌ Matchmaking cancelled.";
+      battleButton.disabled = false;
+      cancelSearchButton.style.display = "none";
     }
 
-    await rtdb.ref(`/matchmakingQueue/${user.uid}`).remove();
-
-    matchStatus.textContent = "❌ Matchmaking cancelled.";
-    battleButton.disabled = false;
-    cancelSearchButton.style.display = "none";
-  }
-
-  cancelSearchButton.onclick = cancelSearch;
-</script>
-
+    cancelSearchButton.onclick = cancelSearch;
+  </script>
 </body>
 </html>
