@@ -50,7 +50,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 
- <script>
+<script>
   const firebaseConfig = {
     apiKey: "AIzaSyADqsChcYfhT_bAlQ1VWkrlga-oTJViz7U",
     authDomain: "clashroyaleclone-ae764.firebaseapp.com",
@@ -131,10 +131,7 @@
   }
 
   cancelSearchButton.onclick = async () => {
-    clearMatchmaking();
-    matchStatus.textContent = "❌ Matchmaking cancelled.";
-    battleButton.disabled = false;
-    cancelSearchButton.style.display = "none";
+    await clearMatchmaking("❌ Matchmaking cancelled.");
   };
 
   battleButton.addEventListener("click", async () => {
@@ -183,15 +180,12 @@
 
       localStorage.setItem("lobbyId", lobbyId);
 
-      // Poll for match status every 3 seconds
       matchmakingInterval = setInterval(async () => {
         try {
-          const lobbyDoc = await lobbiesRef.doc(lobbyId).get();
+          const lobbyDoc = await db.collection("lobbies").doc(lobbyId).get();
           const lobbyData = lobbyDoc.data();
-
           if (lobbyData && lobbyData.ready && lobbyData.players.length === 2) {
-            clearMatchmaking();
-            matchStatus.textContent = "✅ Match found! Starting battle...";
+            await clearMatchmaking("✅ Match found! Starting battle...", false);
             setTimeout(() => {
               window.location.href = "battle.html";
             }, 1000);
@@ -201,21 +195,14 @@
         }
       }, 3000);
 
-      // Timeout after 30 seconds
       matchmakingTimeout = setTimeout(async () => {
-        clearMatchmaking();
-        if (createdLobby && currentLobbyId) {
-          await db.collection("lobbies").doc(currentLobbyId).delete();
-        }
-        matchStatus.textContent = "❌ No opponents found. Please try again.";
-        battleButton.disabled = false;
-        cancelSearchButton.style.display = "none";
+        await clearMatchmaking("❌ No opponents found. Please try again.");
       }, 30000);
 
     } catch (err) {
       console.error("Matchmaking error:", err);
       if (err.code === 'resource-exhausted') {
-        matchStatus.textContent = "⚠️ Server busy. Please try again later.";
+        matchStatus.textContent = "⚠️ Firestore quota exceeded. Try again later.";
       } else {
         matchStatus.textContent = "❌ Failed to find battle. Try again.";
       }
@@ -224,25 +211,25 @@
     }
   });
 
-  async function clearMatchmaking() {
-    if (matchmakingInterval) {
-      clearInterval(matchmakingInterval);
-      matchmakingInterval = null;
-    }
-    if (matchmakingTimeout) {
-      clearTimeout(matchmakingTimeout);
-      matchmakingTimeout = null;
-    }
-    if (createdLobby && currentLobbyId) {
+  async function clearMatchmaking(message, deleteLobby = true) {
+    if (matchmakingInterval) clearInterval(matchmakingInterval);
+    if (matchmakingTimeout) clearTimeout(matchmakingTimeout);
+    matchmakingInterval = null;
+    matchmakingTimeout = null;
+
+    if (deleteLobby && createdLobby && currentLobbyId) {
       try {
         await db.collection("lobbies").doc(currentLobbyId).delete();
-        console.log("Deleted lobby:", currentLobbyId);
       } catch (err) {
         console.error("Error deleting lobby:", err);
       }
     }
-    currentLobbyId = null;
+
     createdLobby = false;
+    currentLobbyId = null;
+    matchStatus.textContent = message;
+    battleButton.disabled = false;
+    cancelSearchButton.style.display = "none";
   }
 </script>
 
