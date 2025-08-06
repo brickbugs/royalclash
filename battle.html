@@ -164,33 +164,33 @@ const player1NameEl = document.getElementById("player1Name");
 const player2NameEl = document.getElementById("player2Name");
 const elixirBar = document.getElementById("elixirBar");
 
-let currentUser = null, lobbyId = localStorage.getItem("lobbyId");
-let playerSide = null, enemySide = null, playerDeck = [], enemyDeck = [];
-let selectedCardIndex = null, selectedCardData = null;
-let elixir = 10, maxElixir = 10;
-let placedCards = [], cardDataCache = {};
-const lastSyncTimes = new Map();
+let currentUser, playerSide, enemySide,
+    playerDeck = [], enemyDeck = [],
+    selectedCardIndex = null, selectedCardData = null,
+    elixir = 10, maxElixir = 10,
+    placedCards = [], cardDataCache = [];
+const lastSync = new Map();
 
 function shouldSync(id, delay = 300) {
   const now = Date.now();
-  if (!lastSyncTimes.has(id) || now - lastSyncTimes.get(id) > delay) {
-    lastSyncTimes.set(id, now);
+  if (!lastSync.has(id) || now - lastSync.get(id) > delay) {
+    lastSync.set(id, now);
     return true;
   }
   return false;
 }
 
 function updateElixirBar() {
-  elixirBar.style.width = `${(elixir / maxElixir) * 100}%`;
+  elixirBar.style.width = `${(elixir/maxElixir)*100}%`;
 }
-setInterval(() => {
-  if (elixir < maxElixir) elixir = Math.min(maxElixir, elixir + 1), updateElixirBar();
-}, 1000);
+setInterval(() => { if (elixir<maxElixir) elixir = Math.min(maxElixir, elixir+1), updateElixirBar(); }, 1000);
 
-if (!lobbyId) {
-  alert("Lobby ID not found! Redirecting to home.");
+const matchId = localStorage.getItem("matchId");
+const matchCreator = localStorage.getItem("matchCreator");
+if (!matchId || !matchCreator) {
+  alert("Missing match info!");
   window.location.href = "home.html";
-  throw new Error("No lobbyId found");
+  throw new Error("MatchId or Creator missing");
 }
 
 async function loadCardData() {
@@ -201,66 +201,63 @@ async function loadCardData() {
 }
 
 async function loadBattle() {
-  console.log("Loading battle. Current user:", currentUser?.uid);
+  console.log("Loading battle. currentUser:", currentUser?.uid);
   startText.textContent = "Loading battle data...";
-  const lobbySnap = await db.collection("lobbies").doc(lobbyId).get();
+  const lobbyRef = db.collection("lobbies")
+                     .doc(matchCreator)
+                     .collection("matches")
+                     .doc(matchId);
+  const lobbySnap = await lobbyRef.get();
   console.log("Lobby snapshot:", lobbySnap.exists, lobbySnap.data());
   if (!lobbySnap.exists) {
     startText.textContent = "❌ Lobby not found!";
     return;
   }
-  const lobbyData = lobbySnap.data();
-  const players = lobbyData.players || [];
-  console.log("Players in lobby:", players);
 
+  const players = lobbySnap.data().players || [];
+  console.log("Players in lobby:", players);
   if (players.length < 2) {
     startText.textContent = "❌ Waiting for opponent...";
     return;
   }
 
   const [uid1, uid2] = players;
-  const [p1snap, p2snap] = await Promise.all([
+  const snaps = await Promise.all([
     db.collection("players").doc(uid1).get(),
     db.collection("players").doc(uid2).get()
   ]);
-  const p1data = p1snap.data(), p2data = p2snap.data();
-  player1NameEl.textContent = p1data?.username || "Player 1";
-  player2NameEl.textContent = p2data?.username || "Player 2";
+  const d1 = snaps[0].data(), d2 = snaps[1].data();
+  player1NameEl.textContent = d1?.username || "Player 1";
+  player2NameEl.textContent = d2?.username || "Player 2";
 
   if (currentUser.uid === uid1) {
-    playerSide = "player1";
-    enemySide = "player2";
-    playerDeck = [...(p1data.deck || [])];
-    enemyDeck = [...(p2data.deck || [])];
+    playerSide = "player1"; enemySide = "player2";
+    playerDeck = [...(d1.deck||[])]; enemyDeck = [...(d2.deck||[])];
   } else if (currentUser.uid === uid2) {
-    playerSide = "player2";
-    enemySide = "player1";
-    playerDeck = [...(p2data.deck || [])];
-    enemyDeck = [...(p1data.deck || [])];
+    playerSide = "player2"; enemySide = "player1";
+    playerDeck = [...(d2.deck||[])]; enemyDeck = [...(d1.deck||[])];
   } else {
-    alert("Not in this battle.");
-    window.location.href = "home.html";
+    alert("Not in this match."); window.location.href = "home.html";
     return;
   }
 
   await loadCardData();
   renderHand(playerDeck);
-  startText.textContent = "✅ Battle Ready! Select a card and place it on your side.";
+  startText.textContent = "✅ Battle ready! Select & place a card.";
 }
 
 function renderHand(deck) {
   hand.innerHTML = "";
   deck.forEach((cid, idx) => {
-    const cd = cardDataCache[cid.toLowerCase()];
-    if (!cd) return;
+    const cd = cardDataCache[cid.toLowerCase()]; if (!cd) return;
     const el = document.createElement("div");
     el.classList.add("card");
     el.innerHTML = `${cd.name}<br><span style="font-size:14px; color:#7be3ff;">${cd.elixir}⚡</span>`;
-    el.title = `${cd.name}\nHP: ${cd.hitpoints}\nDamage: ${cd.damage}\nTargets: ${cd.targets}`;
+    el.title = `${cd.name}\nHP:${cd.hitpoints} DMG:${cd.damage}\nTargets:${cd.targets}`;
     el.dataset.idx = idx;
     el.onclick = () => {
       selectedCardIndex = selectedCardIndex === idx ? null : idx;
-      selectedCardData = selectedCardIndex === null ? null : cd;
+      selectedCardData = selectedCardIndex===null ? null : cd;
       updateHandSelection();
     };
     hand.appendChild(el);
@@ -269,145 +266,132 @@ function renderHand(deck) {
 }
 
 function updateHandSelection() {
-  hand.querySelectorAll(".card").forEach((el, i) =>
-    el.classList.toggle("selected", i === selectedCardIndex)
-  );
+  hand.querySelectorAll(".card").forEach((el,i)=> el.classList.toggle("selected", i===selectedCardIndex));
 }
 
-function parseSpeed(s) { return s === "fast" ? 120 : s === "slow" ? 30 : 60; }
-function parseRange(r) { if (r === "long") return 250; if (r === "short") return 80; if (r === "melee") return 40; return 150; }
-function distance(x1,y1,x2,y2) { return Math.hypot(x2 - x1, y2 - y1); }
+function parseSpeed(s) { return s==="fast"?120:s==="slow"?30:60; }
+function parseRange(r) { return r==="long"?250:r==="short"?80:r==="melee"?40:150; }
+function distance(x1,y1,x2,y2){return Math.hypot(x2-x1,y2-y1);}
 
 function startPlacementListener() {
-  const ref = rtdb.ref(`battles/${lobbyId}/placements`);
+  const ref = rtdb.ref(`battles/${matchCreator}/${matchId}/placements`);
   ref.on("child_added", snap => {
-    if (!placedCards.some(p => p.id === snap.key)) renderPlacedCard(snap.key, snap.val());
+    if (!placedCards.some(p=>p.id===snap.key)) renderPlacedCard(snap.key, snap.val());
   });
   ref.on("child_changed", snap => {
-    const c = placedCards.find(p => p.id === snap.key);
+    const c = placedCards.find(p=>p.id===snap.key);
     if (c) {
-      const d = snap.val();
-      c.targetX = d.x; c.targetY = d.y; c.hp = d.hp;
-      const pct = (c.hp/c.maxHp)*100;
-      c.hpBarElement.style.width = `${pct}%`;
-      c.hpBarElement.style.backgroundColor = pct < 30 ? "#f00":"#0f0";
-      if (c.hp <= 0) c.domElement.style.opacity = "0.5";
+      const d=snap.val(); c.targetX=d.x; c.targetY=d.y; c.hp=d.hp;
+      const pct=(c.hp/c.maxHp)*100;
+      c.hpBarElement.style.width=`${pct}%`;
+      c.hpBarElement.style.backgroundColor=pct<30?"#f00":"#0f0";
+      if(c.hp<=0) c.domElement.style.opacity="0.5";
     }
   });
   ref.on("child_removed", snap => {
-    const idx = placedCards.findIndex(p => p.id === snap.key);
-    if (idx >= 0) { placedCards[idx].domElement.remove(); placedCards.splice(idx,1); }
+    const idx=placedCards.findIndex(p=>p.id===snap.key);
+    if(idx>=0){placedCards[idx].domElement.remove();placedCards.splice(idx,1);}
   });
 }
 
-function renderPlacedCard(id,data) {
-  const cd = cardDataCache[data.cardId?.toLowerCase()];
+function renderPlacedCard(id,data){
+  const cd = cardDataCache[data.cardId.toLowerCase()];
   if (!cd) return;
   const el = document.createElement("div");
-  el.className = "placed-card";
-  el.textContent = cd.name;
-  el.style.left = `${data.x - 30}px`; el.style.top = `${data.y - 40}px`;
-  el.style.zIndex = data.owner === playerSide ? 10 : 5;
-  el.style.background = data.owner === "player1" ? "#2196f3cc" : "#e91e63cc";
+  el.className="placed-card"; el.textContent=cd.name;
+  el.style.left=`${data.x-30}px`; el.style.top=`${data.y-40}px`;
+  el.style.zIndex=data.owner===playerSide?10:5;
+  el.style.background=data.owner==="player1"?"#2196f3cc":"#e91e63cc";
+  const hpC=document.createElement("div"); hpC.className="hp-bar-container";
+  const hpB=document.createElement("div"); hpB.className="hp-bar";
+  hpC.appendChild(hpB); el.appendChild(hpC); map.appendChild(el);
+  const pct=(data.hp/data.maxHp)*100;
+  hpB.style.width=`${pct}%`; hpB.style.backgroundColor=pct<30?"#f00":"#0f0";
 
-  const hpContainer = document.createElement("div"); hpContainer.className = "hp-bar-container";
-  const hpBar = document.createElement("div"); hpBar.className = "hp-bar";
-  hpContainer.appendChild(hpBar); el.appendChild(hpContainer);
-  map.appendChild(el);
-
-  const pct = (data.hp / data.maxHp) * 100;
-  hpBar.style.width = `${pct}%`; hpBar.style.backgroundColor = pct < 30 ? "#f00":"#0f0";
-
-  const obj = {
-    id, owner: data.owner, x: data.x, y: data.y,
-    hp: data.hp, maxHp: data.maxHp,
-    damage: data.damage, targets: data.targets,
-    speed: parseSpeed(data.speed),
-    range: parseRange(data.range),
-    hitspeed: data.hitspeed, attackCooldown: 0,
-    skill: cd.skill, skillCooldownTime: cd.skillCooldownTime, skillCooldownTracker: 0,
-    domElement: el, hpBarElement: hpBar,
-    targetX: data.x, targetY: data.y
-  };
-  placedCards.push(obj); return obj;
+  const obj = { id, owner:data.owner, x:data.x, y:data.y,
+    hp:data.hp, maxHp:data.maxHp, damage:data.damage,
+    targets:data.targets, speed:parseSpeed(data.speed),
+    range:parseRange(data.range), hitspeed:data.hitspeed,
+    attackCooldown:0, skill:cd.skill, skillCooldownTime:cd.skillCooldownTime,
+    skillCooldownTracker:0, domElement:el, hpBarElement:hpB,
+    targetX:data.x, targetY:data.y };
+  placedCards.push(obj);
+  return obj;
 }
 
-map.addEventListener("click", async (e) => {
-  if (selectedCardIndex === null || !selectedCardData) {
-    startText.textContent = "Select a card first!"; return;
+map.addEventListener("click", async e=>{
+  if (selectedCardIndex===null || !selectedCardData) {
+    startText.textContent="Select a card first!"; return;
   }
   const rect = map.getBoundingClientRect();
   const x = e.clientX - rect.left, y = e.clientY - rect.top;
-  if ((playerSide==="player1"&&y>rect.height/2)||(playerSide==="player2"&&y<rect.height/2)) {
-    startText.textContent = "Place cards only on your side!"; return;
+  if ((playerSide==="player1" && y>rect.height/2)||(playerSide==="player2" && y<rect.height/2)) {
+    startText.textContent="Place cards only on your side!"; return;
   }
-  const cid = playerDeck[selectedCardIndex]; const cd = cardDataCache[cid.toLowerCase()];
-  if (elixir < cd.elixir) {
-    startText.textContent = `❌ Not enough elixir! (${cd.elixir} needed)`; return;
+  const cid = playerDeck[selectedCardIndex], cd = cardDataCache[cid.toLowerCase()];
+  if (elixir<cd.elixir) {
+    startText.textContent=`❌ Not enough elixir! (${cd.elixir} needed)`; return;
   }
 
   try {
-    const pushRef = rtdb.ref(`battles/${lobbyId}/placements`).push();
-    await pushRef.set({
+    const newRef = rtdb.ref(`battles/${matchCreator}/${matchId}/placements`).push();
+    await newRef.set({
       cardId: cid, owner: playerSide, x, y,
       hp: cd.hitpoints, maxHp: cd.hitpoints,
       damage: cd.damage, targets: cd.targets,
-      speed: cd.speed, range: cd.range,
-      hitspeed: cd.hitspeed
+      speed: cd.speed, range: cd.range, hitspeed: cd.hitspeed
     });
-    startText.textContent = "Card placed!";
+    startText.textContent="Card placed!";
     playerDeck.splice(selectedCardIndex,1);
     renderHand(playerDeck);
     selectedCardIndex = selectedCardData = null;
-    elixir -= cd.elixir; updateElixirBar();
+    elixir -= cd.elixir;
+    updateElixirBar();
   } catch(err) {
     console.error("Place error:", err);
-    startText.textContent = "Failed to place card.";
+    startText.textContent="Failed to place card.";
   }
 });
 
+let last = performance.now();
 function gameLoop() {
-  const now = performance.now();
-  const dt = (now - last)/1000;
+  const now = performance.now(), dt = (now-last)/1000;
   last = now;
 
   placedCards.forEach(card => {
-    if (!card || card.hp <= 0) return;
-    card.x += (card.targetX - card.x) * 0.15;
-    card.y += (card.targetY - card.y) * 0.15;
-    card.domElement.style.left = `${card.x-30}px`;
-    card.domElement.style.top = `${card.y-40}px`;
+    if (!card || card.hp<=0) return;
+    card.x += (card.targetX - card.x)*0.15;
+    card.y += (card.targetY - card.y)*0.15;
+    card.domElement.style.left=`${card.x-30}px`;
+    card.domElement.style.top=`${card.y-40}px`;
 
-    if (card.owner !== playerSide) return;
-
-    card.attackCooldown = Math.max(0, card.attackCooldown - dt);
+    if (card.owner!==playerSide) return;
+    card.attackCooldown = Math.max(0,card.attackCooldown-dt);
 
     if (card.skill) {
-      card.skillCooldownTracker = Math.max(0, card.skillCooldownTracker - dt);
-      if (card.skillCooldownTracker <= 0) {
-        if (typeof Skills === "object" && typeof Skills[card.skill] === "function") {
-          Skills[card.skill](card, placedCards, rtdb, lobbyId);
-        }
+      card.skillCooldownTracker = Math.max(0,card.skillCooldownTracker-dt);
+      if (card.skillCooldownTracker<=0) {
+        Skills?.[card.skill]?.(card, placedCards, rtdb, matchCreator, matchId);
         card.skillCooldownTracker = card.skillCooldownTime;
       }
     }
 
-    const target = placedCards.find(c => c.owner !== card.owner && c.hp > 0 &&
-      distance(card.x,card.y,c.x,c.y) <= card.range);
+    const target = placedCards.find(c=>c.owner!==card.owner && c.hp>0 &&
+      distance(card.x,card.y,c.x,c.y)<=card.range);
 
     if (!target) {
-      const nearest = placedCards.find(c => c.owner !== card.owner && c.hp > 0);
-      if (nearest) {
-        const dx = nearest.x - card.x, dy = nearest.y - card.y;
-        const dist = Math.hypot(dx,dy);
-        if (dist > card.range) {
-          const angle = Math.atan2(dy,dx);
-          const move = Math.min(card.speed * dt, dist - card.range);
-          card.x += Math.cos(angle)*move;
-          card.y += Math.sin(angle)*move;
+      const nearest=placedCards.find(c=>c.owner!==card.owner && c.hp>0);
+      if (nearest){
+        const dx=nearest.x-card.x, dy=nearest.y-card.y;
+        const dist=Math.hypot(dx,dy);
+        if (dist>card.range){
+          const angle=Math.atan2(dy,dx);
+          const moveDist = Math.min(card.speed*dt, dist-card.range);
+          card.x += Math.cos(angle)*moveDist;
+          card.y += Math.sin(angle)*moveDist;
           card.targetX = card.x; card.targetY = card.y;
           if (card.id && shouldSync(card.id)) {
-            rtdb.ref(`battles/${lobbyId}/placements/${card.id}`)
+            rtdb.ref(`battles/${matchCreator}/${matchId}/placements/${card.id}`)
               .update({ x: card.x, y: card.y }).catch(console.error);
           }
         }
@@ -415,11 +399,11 @@ function gameLoop() {
       return;
     }
 
-    if (card.attackCooldown <= 0) {
-      const newHp = Math.max(0, target.hp - card.damage);
+    if (card.attackCooldown<=0) {
+      const newHp = Math.max(0,target.hp-card.damage);
       if (shouldSync(target.id, 250)) {
         card.attackCooldown = card.hitspeed;
-        rtdb.ref(`battles/${lobbyId}/placements/${target.id}`)
+        rtdb.ref(`battles/${matchCreator}/${matchId}/placements/${target.id}`)
           .update({ hp: newHp }).catch(console.error);
       }
     }
@@ -428,12 +412,8 @@ function gameLoop() {
   requestAnimationFrame(gameLoop);
 }
 
-let last = performance.now();
-
 auth.onAuthStateChanged(async user => {
-  if (!user) {
-    window.location.href = "index.html"; return;
-  }
+  if (!user) { window.location.href="index.html"; return; }
   currentUser = user;
   await loadBattle();
   startPlacementListener();
