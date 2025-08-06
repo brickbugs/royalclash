@@ -71,10 +71,9 @@
     const cancelSearchButton = document.getElementById("cancelSearchButton");
     const matchStatus = document.getElementById("matchStatus");
 
-    let matchmakingUnsubscribe = null;
     let matchmakingTimeout = null;
+    let pollingInterval = null;
 
-    // Update online/offline status
     function updateOnlineStatus() {
       if (!navigator.onLine) {
         matchStatus.textContent = "⚠️ You are offline. Check your internet connection.";
@@ -131,21 +130,18 @@
       window.location.href = "deck.html";
     }
 
-    // New matchmaking approach: each waiting player has own doc in collection
     const waitingPlayersRef = db.collection("matchmaking_waitingPlayers");
     const matchesRef = db.collection("matches");
 
     async function joinMatchmakingQueue(uid) {
-      // Add yourself to waiting players collection
       const waitingDocRef = waitingPlayersRef.doc(uid);
       await waitingDocRef.set({
         uid: uid,
         joinedAt: firebase.firestore.FieldValue.serverTimestamp()
       });
 
-      // Now try to find an opponent
+      // Try to find opponent
       const snapshot = await waitingPlayersRef.orderBy("joinedAt").get();
-
       const waitingPlayers = snapshot.docs.map(doc => doc.id).filter(id => id !== uid);
 
       if (waitingPlayers.length > 0) {
@@ -157,7 +153,7 @@
           waitingPlayersRef.doc(opponentId).delete()
         ]);
 
-        // Create match document
+        // Create match doc
         const newMatchRef = matchesRef.doc();
         await newMatchRef.set({
           players: [uid, opponentId],
@@ -170,18 +166,20 @@
       return { matched: false };
     }
 
-    // Listen for matches where current user is included
-    function listenForMatch(uid, onMatchFound) {
-      return matchesRef
-        .where("players", "array-contains", uid)
-        .onSnapshot(snapshot => {
-          snapshot.docChanges().forEach(change => {
-            if (change.type === "added") {
-              const matchData = change.doc.data();
-              onMatchFound({ matchId: change.doc.id, matchData });
-            }
-          });
-        });
+    function pollForMatch(uid, onMatchFound) {
+      pollingInterval = setInterval(async () => {
+        try {
+          const snapshot = await matchesRef.where("players", "array-contains", uid).get();
+          if (!snapshot.empty) {
+            const doc = snapshot.docs[0];
+            onMatchFound({ matchId: doc.id, matchData: doc.data() });
+            clearInterval(pollingInterval);
+            pollingInterval = null;
+          }
+        } catch (e) {
+          console.error("Polling error:", e);
+        }
+      }, 3000); // every 3 seconds
     }
 
     battleButton.addEventListener("click", async () => {
@@ -197,9 +195,10 @@
         return;
       }
 
-      if (matchmakingUnsubscribe) {
-        matchmakingUnsubscribe();
-        matchmakingUnsubscribe = null;
+      // Clear any existing polling or timeout
+      if (pollingInterval) {
+        clearInterval(pollingInterval);
+        pollingInterval = null;
       }
       if (matchmakingTimeout) {
         clearTimeout(matchmakingTimeout);
@@ -215,24 +214,23 @@
           battleButton.disabled = false;
           window.location.href = `battle.html?matchId=${result.matchId}`;
         } else {
-          // Listen for match
-          matchmakingUnsubscribe = listenForMatch(user.uid, ({ matchId }) => {
+          pollForMatch(user.uid, ({ matchId }) => {
             matchStatus.textContent = "✅ Match found! Starting battle...";
             cancelSearchButton.style.display = "none";
             battleButton.disabled = false;
 
-            if (matchmakingUnsubscribe) {
-              matchmakingUnsubscribe();
-              matchmakingUnsubscribe = null;
+            if (pollingInterval) {
+              clearInterval(pollingInterval);
+              pollingInterval = null;
             }
+
             window.location.href = `battle.html?matchId=${matchId}`;
           });
 
-          // Timeout after 30 seconds: remove user from waiting queue if no match found
           matchmakingTimeout = setTimeout(async () => {
-            if (matchmakingUnsubscribe) {
-              matchmakingUnsubscribe();
-              matchmakingUnsubscribe = null;
+            if (pollingInterval) {
+              clearInterval(pollingInterval);
+              pollingInterval = null;
             }
 
             try {
@@ -256,9 +254,9 @@
     });
 
     cancelSearchButton.onclick = async () => {
-      if (matchmakingUnsubscribe) {
-        matchmakingUnsubscribe();
-        matchmakingUnsubscribe = null;
+      if (pollingInterval) {
+        clearInterval(pollingInterval);
+        pollingInterval = null;
       }
       if (matchmakingTimeout) {
         clearTimeout(matchmakingTimeout);
