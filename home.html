@@ -134,40 +134,42 @@
     // Reference to the matchmaking queue document
     const matchmakingRef = db.collection("matchmaking").doc("queue");
 
-    // Function to join matchmaking queue atomically
-    async function joinMatchmakingQueue(uid) {
-      return db.runTransaction(async (transaction) => {
-        const doc = await transaction.get(matchmakingRef);
-        let data = doc.exists ? doc.data() : { waitingPlayers: [], matches: [] };
+   async function joinMatchmakingQueue(uid) {
+  return db.runTransaction(async (transaction) => {
+    const doc = await transaction.get(matchmakingRef);
+    let data = doc.exists ? doc.data() : { waitingPlayers: [], matches: [] };
 
-        const waiting = data.waitingPlayers || [];
-        const matches = data.matches || [];
+    const waiting = data.waitingPlayers || [];
+    const matches = data.matches || [];
 
-        // Try to find an opponent (not self)
-        const opponentIndex = waiting.findIndex(id => id !== uid);
+    const opponentIndex = waiting.findIndex(id => id !== uid);
 
-        if (opponentIndex >= 0) {
-          // Match found
-          const opponentId = waiting[opponentIndex];
-          waiting.splice(opponentIndex, 1); // Remove opponent from waiting
+    if (opponentIndex >= 0) {
+      const opponentId = waiting[opponentIndex];
+      waiting.splice(opponentIndex, 1);
+      const newMatchId = db.collection("matches").doc().id;
+      matches.push({ players: [uid, opponentId], matchId: newMatchId });
 
-          // Create new matchId
-          const newMatchId = db.collection("matches").doc().id;
-          matches.push({ players: [uid, opponentId], matchId: newMatchId });
-
-          transaction.set(matchmakingRef, { waitingPlayers: waiting, matches }, { merge: true });
-
-          return { matched: true, matchId: newMatchId };
+      if (doc.exists) {
+        transaction.update(matchmakingRef, { waitingPlayers: waiting, matches });
+      } else {
+        transaction.set(matchmakingRef, { waitingPlayers: waiting, matches });
+      }
+      return { matched: true, matchId: newMatchId };
+    } else {
+      if (!waiting.includes(uid)) {
+        waiting.push(uid);
+        if (doc.exists) {
+          transaction.update(matchmakingRef, { waitingPlayers: waiting, matches });
         } else {
-          // No opponent, add self if not already waiting
-          if (!waiting.includes(uid)) {
-            waiting.push(uid);
-            transaction.set(matchmakingRef, { waitingPlayers: waiting, matches }, { merge: true });
-          }
-          return { matched: false };
+          transaction.set(matchmakingRef, { waitingPlayers: waiting, matches });
         }
-      });
+      }
+      return { matched: false };
     }
+  });
+}
+
 
     battleButton.addEventListener("click", async () => {
       battleButton.disabled = true;
