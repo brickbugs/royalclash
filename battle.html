@@ -134,25 +134,29 @@
 <div id="map" style="position:relative; width:800px; height:400px; border:1px solid #000; margin: 0 auto;"></div>
 
 
-  <!-- Firebase -->
-  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+ <!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 
 <script>
 // Firebase config and initialization
 const firebaseConfig = {
   apiKey: "AIzaSyADqsChcYfhT_bAlQ1VWkrlga-oTJViz7U",
   authDomain: "clashroyaleclone-ae764.firebaseapp.com",
+  databaseURL: "https://clashroyaleclone-ae764-default-rtdb.firebaseio.com",
   projectId: "clashroyaleclone-ae764",
   storageBucket: "clashroyaleclone-ae764.appspot.com",
   messagingSenderId: "938364278081",
   appId: "1:938364278081:web:1c214bd66caef6d7567dc0",
   measurementId: "G-PT2GPP0JF5"
 };
+
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
+const rtdb = firebase.database();
 
 const hand = document.getElementById("hand");
 const map = document.getElementById("map");
@@ -292,32 +296,32 @@ function updateHandSelection() {
 }
 
 function startPlacementListener() {
-  const cardMap = new Map();
-  db.collection("lobbies").doc(lobbyId).collection("placements").orderBy("createdAt").onSnapshot(snapshot => {
-    snapshot.docChanges().forEach(change => {
-      const doc = change.doc, data = doc.data(), id = doc.id;
-      if (change.type === "added" && !cardMap.has(id)) {
-        cardMap.set(id, renderPlacedCard(id, data));
-      }
-      if (change.type === "modified") {
-        const card = cardMap.get(id);
-        if (card) {
-          card.targetX = data.x;
-          card.targetY = data.y;
-          card.hp = data.hp;
-          const pct = (card.hp / card.maxHp) * 100;
-          card.hpBarElement.style.width = `${pct}%`;
-          card.hpBarElement.style.backgroundColor = pct < 30 ? "#f00" : "#0f0";
-          if (card.hp <= 0) card.domElement.style.opacity = "0.5";
-        }
-      }
-      if (change.type === "removed") {
-        const c = cardMap.get(id);
-        if (c?.domElement?.parentElement) c.domElement.remove();
-        cardMap.delete(id);
-        placedCards = placedCards.filter(p => p.id !== id);
-      }
-    });
+  const ref = rtdb.ref(`battles/${lobbyId}/placements`);
+  ref.on("child_added", snap => {
+    if (placedCards.find(p => p.id === snap.key)) return;
+    const data = snap.val();
+    renderPlacedCard(snap.key, data);
+  });
+  ref.on("child_changed", snap => {
+    const card = placedCards.find(p => p.id === snap.key);
+    if (card) {
+      const data = snap.val();
+      card.targetX = data.x;
+      card.targetY = data.y;
+      card.hp = data.hp;
+      const pct = (card.hp / card.maxHp) * 100;
+      card.hpBarElement.style.width = `${pct}%`;
+      card.hpBarElement.style.backgroundColor = pct < 30 ? "#f00" : "#0f0";
+      if (card.hp <= 0) card.domElement.style.opacity = "0.5";
+    }
+  });
+  ref.on("child_removed", snap => {
+    const idx = placedCards.findIndex(p => p.id === snap.key);
+    if (idx !== -1) {
+      const card = placedCards[idx];
+      card.domElement.remove();
+      placedCards.splice(idx, 1);
+    }
   });
 }
 
@@ -396,7 +400,8 @@ map.addEventListener("click", async (e) => {
   }
 
   try {
-    await db.collection("lobbies").doc(lobbyId).collection("placements").add({
+    const newRef = rtdb.ref(`battles/${lobbyId}/placements`).push();
+    await newRef.set({
       cardId, owner: playerSide,
       x, y,
       hp: cd.hitpoints,
@@ -405,8 +410,7 @@ map.addEventListener("click", async (e) => {
       targets: cd.targets,
       speed: cd.speed,
       range: cd.range,
-      hitspeed: cd.hitspeed,
-      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      hitspeed: cd.hitspeed
     });
     startText.textContent = "Card placed!";
     playerDeck.splice(selectedCardIndex, 1);
@@ -443,7 +447,7 @@ function gameLoop() {
       card.skillCooldownTracker = Math.max(0, card.skillCooldownTracker - dt);
       if (card.skillCooldownTracker <= 0) {
         if (typeof Skills === "object" && typeof Skills[card.skill] === "function") {
-          Skills[card.skill](card, placedCards, db, lobbyId);
+          Skills[card.skill](card, placedCards, rtdb, lobbyId);
         }
         card.skillCooldownTracker = card.skillCooldownTime;
       }
@@ -469,7 +473,7 @@ function gameLoop() {
           card.targetY = card.y;
 
           if (card.id && shouldSync(card.id)) {
-            db.collection("lobbies").doc(lobbyId).collection("placements").doc(card.id)
+            rtdb.ref(`battles/${lobbyId}/placements/${card.id}`)
               .update({ x: card.x, y: card.y }).catch(console.error);
           }
         }
@@ -481,7 +485,7 @@ function gameLoop() {
       const newHp = Math.max(0, target.hp - card.damage);
       if (shouldSync(target.id, 250)) {
         card.attackCooldown = card.hitspeed;
-        db.collection("lobbies").doc(lobbyId).collection("placements").doc(target.id)
+        rtdb.ref(`battles/${lobbyId}/placements/${target.id}`)
           .update({ hp: newHp }).catch(console.error);
       }
     }
