@@ -49,6 +49,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 
   <script>
     const firebaseConfig = {
@@ -58,12 +59,14 @@
       storageBucket: "clashroyaleclone-ae764.appspot.com",
       messagingSenderId: "938364278081",
       appId: "1:938364278081:web:1c214bd66caef6d7567dc0",
-      measurementId: "G-PT2GPP0JF5"
+      measurementId: "G-PT2GPP0JF5",
+      databaseURL: "https://clashroyaleclone-ae764-default-rtdb.firebaseio.com"
     };
 
     firebase.initializeApp(firebaseConfig);
     const auth = firebase.auth();
     const db = firebase.firestore();
+    const rtdb = firebase.database();
 
     const usernameEl = document.getElementById("username");
     const coinsEl = document.getElementById("coins");
@@ -71,21 +74,7 @@
     const cancelSearchButton = document.getElementById("cancelSearchButton");
     const matchStatus = document.getElementById("matchStatus");
 
-    let matchmakingTimeout = null;
-    let pollingInterval = null;
-
-    function updateOnlineStatus() {
-      if (!navigator.onLine) {
-        matchStatus.textContent = "⚠️ You are offline. Check your internet connection.";
-        battleButton.disabled = true;
-      } else {
-        matchStatus.textContent = "";
-        battleButton.disabled = false;
-      }
-    }
-    window.addEventListener('offline', updateOnlineStatus);
-    window.addEventListener('online', updateOnlineStatus);
-    updateOnlineStatus();
+    let matchListener = null;
 
     auth.onAuthStateChanged(async (user) => {
       if (!user) {
@@ -93,31 +82,11 @@
         return;
       }
 
-      usernameEl.textContent = "Loading username...";
-      coinsEl.textContent = "Loading coins...";
+      const doc = await db.collection("players").doc(user.uid).get();
+      const data = doc.data();
 
-      try {
-        const doc = await db.collection("players").doc(user.uid).get();
-        const data = doc.data();
-
-        if (!data) {
-          usernameEl.textContent = "⚠️ No user data found";
-          coinsEl.textContent = "";
-          return;
-        }
-
-        usernameEl.textContent = `👤 Username: ${data.username}`;
-        coinsEl.textContent = `💰 Coins: ${data.coins ?? 0}`;
-
-        if (data.coins === undefined) {
-          await db.collection("players").doc(user.uid).update({ coins: 100 });
-          coinsEl.textContent = `💰 Coins: 100`;
-        }
-      } catch (error) {
-        console.error("Error fetching user data:", error);
-        usernameEl.textContent = "⚠️ Unable to load username";
-        coinsEl.textContent = "";
-      }
+      usernameEl.textContent = `👤 Username: ${data?.username ?? "Unknown"}`;
+      coinsEl.textContent = `💰 Coins: ${data?.coins ?? 0}`;
     });
 
     function logout() {
@@ -130,56 +99,39 @@
       window.location.href = "deck.html";
     }
 
-    const waitingPlayersRef = db.collection("matchmaking_waitingPlayers");
-    const matchesRef = db.collection("matches");
-
-    async function joinMatchmakingQueue(uid) {
-      const waitingDocRef = waitingPlayersRef.doc(uid);
-      await waitingDocRef.set({
-        uid: uid,
-        joinedAt: firebase.firestore.FieldValue.serverTimestamp()
+    function startMatchListener(uid) {
+      matchListener = rtdb.ref(`/matches/${uid}`);
+      matchListener.on("value", (snapshot) => {
+        const matchData = snapshot.val();
+        if (matchData && matchData.matchId) {
+          matchStatus.textContent = "✅ Match found! Redirecting...";
+          rtdb.ref(`/matches/${uid}`).remove(); // Clean up
+          window.location.href = `battle.html?matchId=${matchData.matchId}`;
+        }
       });
-
-      // Try to find opponent
-      const snapshot = await waitingPlayersRef.orderBy("joinedAt").get();
-      const waitingPlayers = snapshot.docs.map(doc => doc.id).filter(id => id !== uid);
-
-      if (waitingPlayers.length > 0) {
-        const opponentId = waitingPlayers[0];
-
-        // Remove both from waiting queue
-        await Promise.all([
-          waitingPlayersRef.doc(uid).delete(),
-          waitingPlayersRef.doc(opponentId).delete()
-        ]);
-
-        // Create match doc
-        const newMatchRef = matchesRef.doc();
-        await newMatchRef.set({
-          players: [uid, opponentId],
-          createdAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
-
-        return { matched: true, matchId: newMatchRef.id };
-      }
-
-      return { matched: false };
     }
 
-    function pollForMatch(uid, onMatchFound) {
-      pollingInterval = setInterval(async () => {
-        try {
-          const snapshot = await matchesRef.where("players", "array-contains", uid).get();
-          if (!snapshot.empty) {
-            const doc = snapshot.docs[0];
-            onMatchFound({ matchId: doc.id, matchData: doc.data() });
-            clearInterval(pollingInterval);
-            pollingInterval = null;
-          }
-        } catch (e) {
-          console.error("Polling error:", e);
-        }
-      }, 3000); // every 3 seconds
+    async function joinQueue(uid) {
+      const queueRef = rtdb.ref("/matchmakingQueue");
+      const snapshot = await queueRef.once("value");
+      const queue = snapshot.val() || {};
+
+      const otherUid = Object.keys(queue).find(id => id !== uid);
+
+      if (otherUid) {
+        // Match found
+        const matchId = rtdb.ref().push().key;
+        await Promise.all([
+          rtdb.ref(`/matches/${uid}`).set({ matchId, opponent: otherUid }),
+          rtdb.ref(`/matches/${otherUid}`).set({ matchId, opponent: uid }),
+          rtdb.ref(`/matchmakingQueue/${otherUid}`).remove()
+        ]);
+        return { matched: true, matchId };
+      } else {
+        // No match, add self to queue
+        await rtdb.ref(`/matchmakingQueue/${uid}`).set(true);
+        return { matched: false };
+      }
     }
 
     battleButton.addEventListener("click", async () => {
@@ -188,94 +140,40 @@
       matchStatus.textContent = "🔍 Searching for an opponent...";
 
       const user = auth.currentUser;
-      if (!user) {
-        matchStatus.textContent = "❌ Not logged in.";
-        battleButton.disabled = false;
-        cancelSearchButton.style.display = "none";
-        return;
-      }
+      if (!user) return;
 
-      // Clear any existing polling or timeout
-      if (pollingInterval) {
-        clearInterval(pollingInterval);
-        pollingInterval = null;
-      }
-      if (matchmakingTimeout) {
-        clearTimeout(matchmakingTimeout);
-        matchmakingTimeout = null;
-      }
+      const result = await joinQueue(user.uid);
 
-      try {
-        const result = await joinMatchmakingQueue(user.uid);
+      if (result.matched) {
+        matchStatus.textContent = "✅ Match found! Redirecting...";
+        window.location.href = `battle.html?matchId=${result.matchId}`;
+      } else {
+        startMatchListener(user.uid);
 
-        if (result.matched) {
-          matchStatus.textContent = "✅ Match found! Starting battle...";
-          cancelSearchButton.style.display = "none";
-          battleButton.disabled = false;
-          window.location.href = `battle.html?matchId=${result.matchId}`;
-        } else {
-          pollForMatch(user.uid, ({ matchId }) => {
-            matchStatus.textContent = "✅ Match found! Starting battle...";
-            cancelSearchButton.style.display = "none";
-            battleButton.disabled = false;
-
-            if (pollingInterval) {
-              clearInterval(pollingInterval);
-              pollingInterval = null;
-            }
-
-            window.location.href = `battle.html?matchId=${matchId}`;
-          });
-
-          matchmakingTimeout = setTimeout(async () => {
-            if (pollingInterval) {
-              clearInterval(pollingInterval);
-              pollingInterval = null;
-            }
-
-            try {
-              await waitingPlayersRef.doc(user.uid).delete();
-            } catch (err) {
-              console.error("Error removing user from queue on timeout:", err);
-            }
-
-            matchStatus.textContent = "❌ No opponents found. Please try again.";
-            cancelSearchButton.style.display = "none";
-            battleButton.disabled = false;
-            matchmakingTimeout = null;
-          }, 30000);
-        }
-      } catch (err) {
-        console.error("Matchmaking error:", err);
-        matchStatus.textContent = "❌ Failed to find battle. Try again.";
-        battleButton.disabled = false;
-        cancelSearchButton.style.display = "none";
+        // Timeout after 30s
+        setTimeout(() => {
+          cancelSearch();
+          matchStatus.textContent = "❌ No opponents found.";
+        }, 30000);
       }
     });
 
-    cancelSearchButton.onclick = async () => {
-      if (pollingInterval) {
-        clearInterval(pollingInterval);
-        pollingInterval = null;
-      }
-      if (matchmakingTimeout) {
-        clearTimeout(matchmakingTimeout);
-        matchmakingTimeout = null;
-      }
-
+    async function cancelSearch() {
       const user = auth.currentUser;
-      if (user) {
-        try {
-          await waitingPlayersRef.doc(user.uid).delete();
-        } catch (err) {
-          console.error("Error removing user from queue on cancel:", err);
-        }
+      if (!user) return;
+
+      if (matchListener) {
+        matchListener.off();
+        matchListener = null;
       }
 
+      await rtdb.ref(`/matchmakingQueue/${user.uid}`).remove();
       matchStatus.textContent = "❌ Matchmaking cancelled.";
       battleButton.disabled = false;
       cancelSearchButton.style.display = "none";
-    };
+    }
+
+    cancelSearchButton.onclick = cancelSearch;
   </script>
 </body>
 </html>
